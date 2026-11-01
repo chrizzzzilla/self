@@ -83,6 +83,7 @@ dependencies {
     implementation(project(":feature-reader"))
     implementation(project(":feature-focus"))
     implementation(project(":feature-game"))
+    implementation(project(":feature-mind"))
 
     implementation(libs.activity.compose)
 }

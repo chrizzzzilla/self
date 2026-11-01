@@ -410,7 +410,7 @@ internal fun PlantGame(onExit: () -> Unit) {
             LaunchedEffect(menuOpen) {
                 open.animateTo(
                     if (menuOpen) 1f else 0f,
-                    androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow),
+                    tween(if (menuOpen) 520 else 420, easing = androidx.compose.animation.core.FastOutSlowInEasing),
                 )
             }
             if (open.value > 0.01f) {
@@ -431,9 +431,7 @@ internal fun PlantGame(onExit: () -> Unit) {
                     Care.entries.chunked(2).forEach { pair ->
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             pair.forEach { c ->
-                                Box(Modifier.width(104.dp)) {
-                                    CareChip(c, selected = tool == c, needed = c in needs && !dayOver, t = time) { tool = c; menuOpen = false }
-                                }
+                                CareChip(c, selected = tool == c, needed = c in needs && !dayOver, t = time, modifier = Modifier.width(112.dp)) { tool = c; menuOpen = false }
                             }
                         }
                     }
@@ -519,7 +517,7 @@ internal fun PlantGame(onExit: () -> Unit) {
             }
         }
 
-        if (stash) GiftStash(d) { stash = false }
+        if (stash) GiftStash(d, hour.floatValue) { stash = false }
     }
 }
 
@@ -588,10 +586,10 @@ private fun PRound(onClick: () -> Unit, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun CareChip(c: Care, selected: Boolean, needed: Boolean, t: androidx.compose.runtime.MutableFloatState, onClick: () -> Unit) {
+private fun CareChip(c: Care, selected: Boolean, needed: Boolean, t: androidx.compose.runtime.MutableFloatState, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(18.dp)
     Column(
-        Modifier
+        modifier
             .clip(shape)
             .background(if (selected) Color(0x336888EC) else Color(0x14FFFFFF))
             .border(if (selected || needed) 1.5.dp else 1.dp, if (needed) AmbientColors.Arty else if (selected) AmbientColors.ArtyText else Color(0x22FFFFFF), shape)
@@ -608,8 +606,28 @@ private fun CareChip(c: Care, selected: Boolean, needed: Boolean, t: androidx.co
     }
 }
 
+/** Wie nah ist das naechste Geschenk dieser Art (0..1) – und wie bekommt man es? */
+private fun giftProgress(g: Gift, d: PlantData, hour: Float): Pair<Float, String> {
+    val night = hour < 6f || hour >= 21f
+    return when (g) {
+        Gift.TAU -> ((0.6f - d.water) / 0.3f).coerceIn(0f, 1f) to "trockene Erde gießen"
+        Gift.LICHTBLATT, Gift.STECKLING ->
+            (if (d.wild > 0) 1f else if (d.stage < 3) d.stage / 3f else 0.5f) to (if (d.stage < 3) "Wildtriebe ab Stufe 3" else "Wildtriebe stutzen")
+        Gift.BLUETE -> (if (d.flowers > 0) 1f else minOf(d.stage / 5f, d.mood).coerceIn(0f, 0.95f)) to "blüht ab Stufe 5, wenn sie glücklich ist"
+        Gift.SAMEN -> (if (d.faded > 0) 1f else if (d.flowers > 0) 0.6f else (d.stage / 10f).coerceAtMost(0.5f)) to "Verblühtes abschneiden"
+        Gift.SAFT -> (if (d.ties < d.neededTies) 1f else (d.stage / 4f).coerceAtMost(0.9f)) to "beim Anbinden (ab Stufe 4)"
+        Gift.LICHTFADEN -> (d.lean / 0.3f).coerceIn(0f, 1f) to "schief? gerade drehen"
+        Gift.GLANZ -> (d.dust / 0.3f).coerceIn(0f, 1f) to "Staub abwischen"
+        Gift.DUFT -> (if (d.talkedFull || night) 0f else d.mood) to (if (d.talkedFull) "morgen wieder" else "zureden, bis sie strahlt")
+        Gift.MONDTROPFEN -> (if (!night) (hour / 21f).coerceIn(0f, 0.95f) else if (d.talkedFull) 0f else d.mood) to "nachts zureden"
+        Gift.WURZEL -> (if (d.potTooSmall) 1f else (d.stage / (d.pot * 2f + 2f)).coerceIn(0f, 0.95f)) to "wenn der Topf zu klein wird"
+        Gift.HUMUS -> (if (d.wilted > 0) 1f else 0.3f) to "welke Blätter entfernen"
+    }
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun GiftStash(d: PlantData, onClose: () -> Unit) {
+private fun GiftStash(d: PlantData, hour: Float, onClose: () -> Unit) {
     val shape = RoundedCornerShape(28.dp)
     Box(
         Modifier
@@ -629,7 +647,7 @@ private fun GiftStash(d: PlantData, onClose: () -> Unit) {
                 .padding(28.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("GESCHENKE DER PFLANZE · FÜR ME", style = pHead)
+                Text("VORRAT · GESCHENKE FÜR ME", style = pHead)
                 Spacer(Modifier.weight(1f))
                 PRound(onClick = onClose) {
                     Canvas(Modifier.size(14.dp)) {
@@ -638,18 +656,47 @@ private fun GiftStash(d: PlantData, onClose: () -> Unit) {
                     }
                 }
             }
-            Spacer(Modifier.height(18.dp))
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Spacer(Modifier.height(20.dp))
+            androidx.compose.foundation.layout.FlowRow(
+                Modifier.verticalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
                 for (g in Gift.entries) {
                     val n = d.gifts[g] ?: 0
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Canvas(Modifier.size(26.dp)) { drawGift(g, center, size.minDimension * 0.5f, if (n > 0) 1f else 0.25f) }
-                        Spacer(Modifier.width(14.dp))
+                    val (prog, how) = giftProgress(g, d, hour)
+                    val ready = prog >= 1f
+                    val tileShape = RoundedCornerShape(22.dp)
+                    Column(
+                        Modifier
+                            .size(150.dp)
+                            .clip(tileShape)
+                            .background(Color(0x14FFFFFF))
+                            .border(1.dp, if (ready) AmbientColors.Arty else Color(0x22FFFFFF), tileShape)
+                            .padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
+                            Canvas(Modifier.fillMaxSize()) {
+                                val r = size.minDimension / 2f - 3f * density
+                                drawArc(Color.White.copy(alpha = 0.1f), -90f, 360f, false, topLeft = center - Offset(r, r), size = Size(r * 2, r * 2), style = Stroke(3f * density))
+                                drawArc(
+                                    if (ready) AmbientColors.Arty else g.color, -90f, 360f * prog.coerceIn(0f, 1f), false,
+                                    topLeft = center - Offset(r, r), size = Size(r * 2, r * 2), style = Stroke(3f * density, cap = StrokeCap.Round), blendMode = BlendMode.Plus,
+                                )
+                                drawGift(g, center, r * 0.6f, if (n > 0) 1f else 0.45f)
+                            }
+                            if (n > 0) Text(
+                                "×$n", style = pLabel.copy(fontSize = 11.sp),
+                                modifier = Modifier.align(Alignment.BottomEnd),
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(g.label, maxLines = 1, style = pLabel.copy(fontSize = 12.sp))
                         Text(
-                            if (n > 0) "${g.label} ×$n" else "· · ·",
-                            style = pLabel.copy(fontSize = 14.sp, color = if (n > 0) AmbientColors.Light else AmbientColors.Muted),
+                            if (ready) "jetzt möglich" else how, maxLines = 2, textAlign = TextAlign.Center,
+                            style = pLabel.copy(fontSize = 9.sp, letterSpacing = 0.sp, color = if (ready) AmbientColors.ArtyText else AmbientColors.Muted),
                         )
-                        if (n > 0) Text("   ${g.meaning}", style = pLabel.copy(fontSize = 12.sp, color = AmbientColors.Muted))
                     }
                 }
             }

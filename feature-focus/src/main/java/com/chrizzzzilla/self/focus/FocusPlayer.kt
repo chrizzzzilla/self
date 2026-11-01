@@ -44,6 +44,54 @@ object FocusPlayer : FocusAudio {
     private var focusRequest: AudioFocusRequest? = null
 
     private val engine = AmbientEngine(SAMPLE_RATE)
+    private var appContext: Context? = null
+
+    // ---------------- Schlaf-Timer (Rest) ----------------
+    private val _sleepEnd = MutableStateFlow<Long?>(null)
+    /** Ende des Schlaf-Timers (Epoch-ms) oder null */
+    val sleepEnd: StateFlow<Long?> = _sleepEnd.asStateFlow()
+    private var sleepJob: kotlinx.coroutines.Job? = null
+
+    /** Startet das Ambiente mit Schlaf-Timer; die letzten Minuten (max. 10) wird es langsam leiser. */
+    fun startSleepTimer(minutes: Int) {
+        sleepJob?.cancel()
+        val total = minutes * 60_000L
+        val end = System.currentTimeMillis() + total
+        _sleepEnd.value = end
+        engine.master = 1f
+        play()
+        appContext?.let { RestService.start(it) }
+        sleepJob = scope.launch {
+            val fadeMs = minOf(10 * 60_000L, total / 3)
+            while (true) {
+                val left = end - System.currentTimeMillis()
+                if (left <= 0) break
+                val f = if (left < fadeMs) left.toFloat() / fadeMs else 1f
+                engine.master = f * f
+                kotlinx.coroutines.delay(1000)
+            }
+            pause()
+            kotlinx.coroutines.delay(1500)
+            engine.master = 1f
+            _sleepEnd.value = null
+            appContext?.let { RestService.stop(it) }
+        }
+    }
+
+    /** Timer um [minutes] verlaengern (wieder volle Lautstaerke, bis das Ausblenden erneut beginnt). */
+    fun extendSleepTimer(minutes: Int) {
+        val end = _sleepEnd.value ?: return
+        val left = ((end - System.currentTimeMillis()) / 60_000L).toInt().coerceAtLeast(0)
+        startSleepTimer(left + minutes)
+    }
+
+    fun cancelSleepTimer() {
+        sleepJob?.cancel()
+        sleepJob = null
+        engine.master = 1f
+        _sleepEnd.value = null
+        appContext?.let { RestService.stop(it) }
+    }
     private var thread: Thread? = null
 
     private val _isPlaying = MutableStateFlow(false)
@@ -78,6 +126,7 @@ object FocusPlayer : FocusAudio {
         audioManager = context.applicationContext.getSystemService(AudioManager::class.java)
         store = AmbientStore(context)
         val app = context.applicationContext
+        appContext = app
         engine.setNatureLoader { name -> SampleDecoder.decode(app, "nature/$name.ogg") }
         presets = store.presets.stateIn(scope, SharingStarted.Eagerly, List(AmbientStore.PRESET_COUNT) { null })
         engine.setMix(_mix.value)

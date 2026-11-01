@@ -62,7 +62,10 @@ import com.chrizzzzilla.self.core.design.AmbientColors
 import com.chrizzzzilla.self.core.design.Manrope
 import com.chrizzzzilla.self.core.design.WidthClass
 import com.chrizzzzilla.self.core.design.currentWidthClass
+import com.chrizzzzilla.self.focus.RestScreen
 import com.chrizzzzilla.self.game.GameScreen
+import com.chrizzzzilla.self.mind.BodyScreen
+import com.chrizzzzilla.self.mind.MindScreen
 import com.chrizzzzilla.self.reader.LibraryScreen
 import kotlin.math.sin
 
@@ -70,6 +73,9 @@ import kotlin.math.sin
 enum class Section(@StringRes val label: Int) {
     READ(R.string.app_section_read),  // „Soul“
     GAME(R.string.app_section_game),  // „Path“
+    MIND(R.string.app_section_mind),  // „Mind“ – Abendfragen
+    REST(R.string.app_section_rest),  // „Rest“ – Ambiente mit Schlaf-Timer
+    BODY(R.string.app_section_body),  // „Body“ – Morgenroutine
 }
 
 /**
@@ -109,6 +115,9 @@ fun SelfAppShell(incomingBook: Uri?, onIncomingBookHandled: () -> Unit) {
                     if (it) menuOpen = false
                 },
             )
+            Section.MIND -> MindScreen(Modifier.fillMaxSize(), onOverlayChanged = { overlay = it; if (it) menuOpen = false })
+            Section.REST -> RestScreen(Modifier.fillMaxSize(), onOverlayChanged = { overlay = it; if (it) menuOpen = false })
+            Section.BODY -> BodyScreen(Modifier.fillMaxSize(), onOverlayChanged = { overlay = it; if (it) menuOpen = false })
         }
 
         // Tippen irgendwo anders schliesst das Menue
@@ -158,20 +167,23 @@ private fun GridMenu(
     LaunchedEffect(open) {
         progress.animateTo(
             if (open) 1f else 0f,
-            if (open) spring(dampingRatio = 0.52f, stiffness = Spring.StiffnessMediumLow) else tween(260),
+            tween(if (open) 520 else 420, easing = androidx.compose.animation.core.FastOutSlowInEasing),
         )
     }
     val p = progress.value
     val grey by animateFloatAsState(if (open) 1f else 0f, tween(300), label = "grau")
 
-    val full = cell * 2 + gap + pad * 2
-    Box(modifier.size(full), contentAlignment = Alignment.BottomStart) {
-        // Das grosse Quadrat waechst aus dem Knopf heraus (mit Ueberschwingen)
+    val fullW = cell * 3 + gap * 2 + pad * 2
+    val fullH = cell * 2 + gap + pad * 2
+    Box(modifier.size(fullW, fullH), contentAlignment = Alignment.BottomStart) {
+        // Die Flaeche waechst ruhig aus dem Knopf heraus
         if (p > 0.001f) {
-            val grow = (full - cell - pad * 2) * p
             Box(
                 Modifier
-                    .size((cell + pad * 2 + grow).coerceAtLeast(1.dp))
+                    .size(
+                        (cell + pad * 2 + (fullW - cell - pad * 2) * p).coerceAtLeast(1.dp),
+                        (cell + pad * 2 + (fullH - cell - pad * 2) * p).coerceAtLeast(1.dp),
+                    )
                     .graphicsLayer { alpha = (p * 1.4f).coerceIn(0f, 1f) }
                     .clip(RoundedCornerShape(26.dp))
                     .background(Brush.verticalGradient(listOf(Color(0xE61A1B21), Color(0xF0111216))))
@@ -182,11 +194,13 @@ private fun GridMenu(
         // Felder (erscheinen kurz nacheinander)
         val tiles = listOf(
             Triple(0, 1, Section.READ), // oben links
-            Triple(1, 1, Section.GAME), // oben rechts
-            Triple(1, 0, null),         // unten rechts: noch frei
+            Triple(1, 1, Section.GAME), // oben Mitte
+            Triple(2, 1, Section.MIND), // oben rechts
+            Triple(1, 0, Section.REST), // unten Mitte
+            Triple(2, 0, Section.BODY), // unten rechts
         )
         tiles.forEachIndexed { i, (col, row, target) ->
-            val local = ((p - i * 0.08f) / (1f - i * 0.08f)).coerceIn(0f, 1.2f)
+            val local = ((p - i * 0.06f) / (1f - i * 0.06f)).coerceIn(0f, 1f)
             if (local > 0.001f) {
                 Box(
                     Modifier
@@ -354,6 +368,53 @@ private fun SectionGlyph(section: Section, selected: Boolean, modifier: Modifier
                     radius = w * 0.2f, center = c,
                 )
                 drawCircle(line, radius = w * 0.055f * (0.9f + 0.2f * breathe), center = c)
+            }
+            Section.MIND -> {
+                // Sternbild: vier verbundene Sterne, einer atmet
+                val pts = listOf(Offset(w * 0.18f, size.height * 0.7f), Offset(w * 0.42f, size.height * 0.35f), Offset(w * 0.68f, size.height * 0.55f), Offset(w * 0.84f, size.height * 0.2f))
+                for (i in 1 until pts.size) drawLine(line.copy(alpha = 0.5f), pts[i - 1], pts[i], strokeWidth = stroke * 0.8f)
+                pts.forEachIndexed { i, pt ->
+                    val br = 0.7f + 0.3f * sin(t * 1.4f + i * 1.7f)
+                    drawCircle(Brush.radialGradient(listOf(accent.copy(alpha = 0.7f * br), Color.Transparent), center = pt, radius = w * 0.14f), radius = w * 0.14f, center = pt)
+                    drawCircle(line, radius = w * 0.04f * br, center = pt)
+                }
+            }
+            Section.REST -> {
+                // Mondsichel ueber ruhigen Wellen
+                val mc = Offset(w * 0.5f, size.height * 0.42f)
+                val mr = w * 0.3f
+                drawCircle(Brush.radialGradient(listOf(accent.copy(alpha = 0.5f + 0.15f * sin(t)), Color.Transparent), center = mc, radius = mr * 1.6f), radius = mr * 1.6f, center = mc)
+                val moon = Path().apply {
+                    addOval(androidx.compose.ui.geometry.Rect(mc.x - mr, mc.y - mr, mc.x + mr, mc.y + mr))
+                }
+                val cut = Path().apply {
+                    addOval(androidx.compose.ui.geometry.Rect(mc.x - mr * 0.55f, mc.y - mr * 1.15f, mc.x + mr * 1.45f, mc.y + mr * 0.85f))
+                }
+                val crescent = Path().apply { op(moon, cut, androidx.compose.ui.graphics.PathOperation.Difference) }
+                drawPath(crescent, line, style = Stroke(stroke))
+                for (k in 0 until 2) {
+                    val y = size.height * (0.82f + k * 0.1f)
+                    val wave = Path().apply {
+                        moveTo(w * 0.12f, y)
+                        cubicTo(w * 0.35f, y - w * 0.05f, w * 0.6f, y + w * 0.05f, w * 0.88f, y + sin(t + k) * w * 0.02f)
+                    }
+                    drawPath(wave, line.copy(alpha = 0.6f - k * 0.2f), style = Stroke(stroke * 0.9f, cap = StrokeCap.Round))
+                }
+            }
+            Section.BODY -> {
+                // aufgehende Sonne mit Strahlen
+                val sc = Offset(w * 0.5f, size.height * 0.72f)
+                val sr = w * 0.24f
+                val rise = 0.9f + 0.1f * sin(t * 1.1f)
+                drawCircle(Brush.radialGradient(listOf(accent.copy(alpha = 0.6f * rise), Color.Transparent), center = sc, radius = sr * 2.2f), radius = sr * 2.2f, center = sc)
+                drawArc(line, 180f, 180f, false, topLeft = Offset(sc.x - sr, sc.y - sr), size = Size(sr * 2, sr * 2), style = Stroke(stroke))
+                for (k in 0 until 5) {
+                    val a = Math.PI.toFloat() + (k + 0.5f) / 5f * Math.PI.toFloat()
+                    val d1 = sr * 1.35f
+                    val d2 = sr * (1.6f + 0.15f * rise)
+                    drawLine(line, Offset(sc.x + kotlin.math.cos(a) * d1, sc.y + sin(a) * d1), Offset(sc.x + kotlin.math.cos(a) * d2, sc.y + sin(a) * d2), strokeWidth = stroke, cap = StrokeCap.Round)
+                }
+                drawLine(line.copy(alpha = 0.7f), Offset(w * 0.08f, sc.y), Offset(w * 0.92f, sc.y), strokeWidth = stroke, cap = StrokeCap.Round)
             }
             Section.GAME -> {
                 // Weg von unten links nach oben rechts

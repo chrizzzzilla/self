@@ -3,4 +3,7 @@
     <string name="app_name">Self</string>
     <string name="app_section_read">Soul</string>
     <string name="app_section_game">Path</string>
+    <string name="app_section_mind">Mind</string>
+    <string name="app_section_rest">Rest</string>
+    <string name="app_section_body">Body</string>
 </resources>

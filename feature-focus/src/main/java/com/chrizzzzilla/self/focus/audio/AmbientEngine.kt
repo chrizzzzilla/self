@@ -13,6 +13,9 @@ internal class AmbientEngine(sampleRate: Int) {
 
     @Volatile private var mix = AmbientMix()
     @Volatile var fadeTarget = 1f
+    /** Gesamtlautstaerke 0..1 (Schlaf-Timer blendet hierueber langsam aus) */
+    @Volatile var master = 1f
+    private var masterNow = 1f
     private var fade = 0f
 
     @Volatile var level = 0f; private set
@@ -81,8 +84,9 @@ internal class AmbientEngine(sampleRate: Int) {
 
             if (fade < fadeTarget) fade = minOf(fadeTarget, fade + fadeStep)
             else if (fade > fadeTarget) fade = maxOf(fadeTarget, fade - fadeStep)
-            l = softClip(l * fade)
-            r = softClip(r * fade)
+            masterNow += (master - masterNow) * smooth
+            l = softClip(l * fade * masterNow)
+            r = softClip(r * fade * masterNow)
             out[2 * i] = l
             out[2 * i + 1] = r
             sumSq += (l * l + r * r) * 0.5f
