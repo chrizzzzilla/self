@@ -199,7 +199,7 @@ private fun GridMenu(
 
         // Der Knopf selbst (bleibt unten links, wird beim Oeffnen grau)
         Box(Modifier.padding(start = pad, bottom = pad)) {
-            GridButton(size = cell, grey = grey, onClick = onToggle)
+            GridButton(buttonSize = cell, grey = grey, onClick = onToggle)
         }
     }
 }
@@ -254,7 +254,7 @@ private fun EmptyTile() {
 
 /** Der Raster-Knopf: vier kleine, leuchtende Quadrate auf Glas, die sanft atmen. Offen: grau, gedreht. */
 @Composable
-private fun GridButton(size: Dp, grey: Float, onClick: () -> Unit) {
+private fun GridButton(buttonSize: Dp, grey: Float, onClick: () -> Unit) {
     val time = remember { mutableFloatStateOf(0f) }
     LaunchedEffect(Unit) {
         val start = withFrameNanos { it }
@@ -263,7 +263,7 @@ private fun GridButton(size: Dp, grey: Float, onClick: () -> Unit) {
     val shape = RoundedCornerShape(20.dp)
     Box(
         Modifier
-            .size(size)
+            .size(buttonSize)
             .clip(shape)
             .background(Color(0xCC17181D))
             .border(1.dp, AmbientColors.Light.copy(alpha = 0.12f + 0.06f * (1f - grey)), shape)
