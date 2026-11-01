@@ -1,5 +1,22 @@
 # Self — Session-Memory (neueste oben)
 
+## 2026-11-01 — Session 1c: Nachtstadt hinter dem Buch + Klang-Mixer (0.1.7) [Rechner: Office]
+
+### Zuletzt fertiggestellt
+- Fokus-Reiter entfernt. `CityScene` (perspektivische Nachtstadt) läuft im Reader **hinter** dem Buch:
+  Readium bekommt `RsProperties(backgroundColor = "transparent")`, `Theme.LIGHT` + eigene Textfarbe, und
+  Pager/WebViews werden nach jedem Seiten-/Einstellungswechsel durchsichtig gemacht (`clearNavigatorBackgrounds`).
+  Davor liegt ein Lesefilter (Farbe des Farbmodus, Regler in „Darstellung“).
+- Fokusmodus-Taste (Landschafts-Symbol): Buch blendet aus, Bedien-Pille unten („Zum Buch“, Play, Klang).
+- Klang-Mixer `AmbientEngine` = `AmbienceLayer` (10) + `NatureLayer` (8, mehrfach) + `PercussionLayer` (10,
+  Tempo 60–120, Hell/Dunkel), Lautstärke je Bereich, Presets 1–5 (`AmbientStore`, DataStore „ambiente“).
+- Chris wollte: keine roten Blinklichter, keine Stern-Kreuze/-Scheine, Stadt dunkler (umgesetzt in 0.1.6).
+
+### Nächster Schritt
+- Chris testet 0.1.7. Offene Frage an ihn: Statusleiste auch in der Bibliothek ausblenden oder Uhr/Akku im Reader?
+- Higgsfield: kein Connector → Chris erzeugt Videos selbst; danach Video als Lese-Hintergrund einbauen.
+- Foreground-Service für Klang bei ausgeschaltetem Bildschirm.
+
 ## 2026-11-01 — Session 1b: Fokus-Bereich v1 [Rechner: Office]
 
 ### Zuletzt fertiggestellt
