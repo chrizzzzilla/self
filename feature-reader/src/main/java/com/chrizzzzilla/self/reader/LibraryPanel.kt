@@ -139,15 +139,8 @@ internal fun LibraryPanel(
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
                 .padding(horizontal = 24.dp, vertical = 18.dp),
         ) {
-            // Kopf: X · Titel · Suche · +
+            // Kopf: Titel · Suche · + · X
             Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
-                RoundIcon(onClick = onClose) {
-                    Canvas(Modifier.size(14.dp)) {
-                        drawLine(AmbientColors.Light, Offset.Zero, Offset(size.width, size.height), strokeWidth = 1.5f * density, cap = StrokeCap.Round)
-                        drawLine(AmbientColors.Light, Offset(size.width, 0f), Offset(0f, size.height), strokeWidth = 1.5f * density, cap = StrokeCap.Round)
-                    }
-                }
-                Spacer(Modifier.width(16.dp))
                 Text("BIBLIOTHEK", style = headStyle)
                 Spacer(Modifier.width(24.dp))
                 SearchField(query, { query = it }, Modifier.weight(1f))
@@ -156,6 +149,13 @@ internal fun LibraryPanel(
                     Canvas(Modifier.size(16.dp)) {
                         drawLine(AmbientColors.Light, Offset(size.width / 2f, 0f), Offset(size.width / 2f, size.height), strokeWidth = 1.8f * density, cap = StrokeCap.Round)
                         drawLine(AmbientColors.Light, Offset(0f, size.height / 2f), Offset(size.width, size.height / 2f), strokeWidth = 1.8f * density, cap = StrokeCap.Round)
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                RoundIcon(onClick = onClose) {
+                    Canvas(Modifier.size(14.dp)) {
+                        drawLine(AmbientColors.Light, Offset.Zero, Offset(size.width, size.height), strokeWidth = 1.5f * density, cap = StrokeCap.Round)
+                        drawLine(AmbientColors.Light, Offset(size.width, 0f), Offset(0f, size.height), strokeWidth = 1.5f * density, cap = StrokeCap.Round)
                     }
                 }
             }
