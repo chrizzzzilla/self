@@ -78,9 +78,13 @@ fun GameScreen(modifier: Modifier = Modifier, onOverlayChanged: (Boolean) -> Uni
     val store = remember { PathStore(context) }
     val calm by store.calm.collectAsStateWithLifecycle(initialValue = CalmProgress(0, 0, 1, 0f))
     var playing by remember { mutableStateOf(false) }
+    var workshop by remember { mutableStateOf(false) }
+    val workshopStore = remember { WorkshopStore(context) }
+    var workshopInfo by remember { mutableStateOf(0f to 0) }
+    LaunchedEffect(workshop) { if (!workshop) workshopInfo = workshopStore.summary() }
     var levelUp by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(playing) { onOverlayChanged(playing) }
+    LaunchedEffect(playing, workshop) { onOverlayChanged(playing || workshop) }
 
     BoxWithConstraints(modifier.fillMaxSize()) {
         val compact = maxWidth < 600.dp
@@ -112,8 +116,14 @@ fun GameScreen(modifier: Modifier = Modifier, onOverlayChanged: (Boolean) -> Uni
                             index = i,
                             onOpen = { playing = true },
                         )
+                    } else if (g == TrainingGame.AMBITION) {
+                        val (secs, found) = workshopInfo
+                        TrainingTile(
+                            game = g, size = small, level = 1 + found / 3, fill = (found % 3) / 3f,
+                            done = secs >= DAILY_SECONDS, index = i, onOpen = { workshop = true },
+                        )
                     } else {
-                        // Ehrgeiz und Demut folgen
+                        // Demut folgt
                         TrainingTile(game = g, size = small, level = 1, fill = 0f, done = false, index = i, onOpen = {})
                     }
                 }
@@ -141,6 +151,8 @@ fun GameScreen(modifier: Modifier = Modifier, onOverlayChanged: (Boolean) -> Uni
             onExit = { playing = false },
         )
     }
+
+    if (workshop) WorkshopGame(onExit = { workshop = false })
 }
 
 @Composable
