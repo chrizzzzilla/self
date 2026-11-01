@@ -67,6 +67,11 @@ android {
         isCoreLibraryDesugaringEnabled = true
     }
 
+    // GeckoView-Bibliotheken komprimiert in die APK (viel kleinerer Download)
+    packaging {
+        jniLibs { useLegacyPackaging = true }
+    }
+
     buildFeatures {
         compose = true
     }
