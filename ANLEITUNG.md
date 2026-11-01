@@ -61,6 +61,30 @@ Obtainium nach unten ziehen, dann tippst du auf **Aktualisieren**.
 
 ---
 
+## 3b. Vorschau-App „Self Dev“: erst testen, dann freigeben
+
+Es gibt zwei Kanäle:
+
+| Branch | App auf dem Gerät | Release auf GitHub |
+|---|---|---|
+| `dev` | **Self Dev** (eigene App, eigene Bibliothek) | Pre-Release `v0.1.N-dev` |
+| `main` | **Self** (die „echte“ App) | Release `v0.1.N` |
+
+Neue Funktionen landen zuerst auf `dev`. Etwa 5 Minuten nach dem Push meldet Obtainium ein Update für **Self Dev**.
+Gefällt dir die Änderung, wird `dev` in `main` übernommen. Dann bekommt auch **Self** das Update.
+
+**Self Dev in Obtainium einrichten (einmal pro Gerät):**
+1. Obtainium → **App hinzufügen** → URL `https://github.com/chrizzzzilla/self`
+2. Darunter die Optionen öffnen:
+   - **„Pre-Releases einbeziehen“** einschalten
+   - **„Release-Titel mit regulärem Ausdruck filtern“**: `Dev`
+3. **Hinzufügen** → **Installieren**
+
+Die normale **Self**-Installation in Obtainium bleibt, wie sie ist. Pre-Releases sind dort standardmäßig aus,
+deshalb sieht sie nur die freigegebenen Versionen.
+
+---
+
 ## 4. Warum Updates klappen: der feste Signatur-Schlüssel
 
 Android installiert ein Update **nur**, wenn es mit **demselben Schlüssel** signiert ist wie die installierte App.
