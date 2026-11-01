@@ -54,6 +54,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -125,6 +126,7 @@ internal fun PlantGame(onExit: () -> Unit) {
     var toast by remember { mutableStateOf<String?>(null) }
     var toastKey by remember { mutableIntStateOf(0) }
     var stash by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
     val rnd = remember { Random(System.nanoTime()) }
     val measurer = rememberTextMeasurer()
 
@@ -342,7 +344,7 @@ internal fun PlantGame(onExit: () -> Unit) {
         }
 
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            val sceneH = maxHeight * 0.8f
+            val sceneH = maxHeight
             Canvas(
                 Modifier
                     .fillMaxWidth()
@@ -396,41 +398,108 @@ internal fun PlantGame(onExit: () -> Unit) {
                 }
             }
 
-            // Unten: Handgriffe · Vorrat
-            Row(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(maxHeight - sceneH)
-                    .background(Brush.verticalGradient(listOf(Color(0xF0101116), Color(0xFA0A0B0E))))
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Row(
-                    Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Care.entries.forEach { c ->
-                        CareChip(c, selected = tool == c, needed = c in needs && !dayOver, t = time) { tool = c }
-                    }
-                }
-                Box(Modifier.width(1.dp).height(44.dp).background(Color(0x22FFFFFF)))
+            // Menue-Knopf unten links: Handgriffe springen links in zwei Spalten auf
+            if (menuOpen) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { menuOpen = false },
+                )
+            }
+            val open = remember { Animatable(0f) }
+            LaunchedEffect(menuOpen) {
+                open.animateTo(
+                    if (menuOpen) 1f else 0f,
+                    androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow),
+                )
+            }
+            if (open.value > 0.01f) {
                 Column(
                     Modifier
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(Color(0x14FFFFFF))
-                        .clickable { stash = true }
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                        .align(Alignment.BottomStart)
+                        .padding(start = 20.dp, bottom = 100.dp)
+                        .graphicsLayer {
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 1f)
+                            scaleX = open.value; scaleY = open.value; alpha = open.value.coerceIn(0f, 1f)
+                        }
+                        .clip(RoundedCornerShape(26.dp))
+                        .background(Color(0xE60E0F14))
+                        .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(26.dp))
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Canvas(Modifier.size(30.dp)) {
-                        pGlow(center, size.minDimension * 0.6f, AmbientColors.Gold, 0.3f)
-                        drawCircle(AmbientColors.Gold, radius = size.minDimension * 0.18f, center = center, style = Stroke(1.6f * density))
+                    Care.entries.chunked(2).forEach { pair ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            pair.forEach { c ->
+                                Box(Modifier.width(104.dp)) {
+                                    CareChip(c, selected = tool == c, needed = c in needs && !dayOver, t = time) { tool = c; menuOpen = false }
+                                }
+                            }
+                        }
                     }
-                    Text("VORRAT · ${d.giftCount}", style = pLabel.copy(fontSize = 10.sp))
                 }
+            }
+            Row(
+                Modifier.align(Alignment.BottomStart).padding(20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val anyNeed = needs.isNotEmpty() && !dayOver
+                Box(
+                    Modifier
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(if (menuOpen) Color(0x55FFFFFF) else Color(0x22FFFFFF))
+                        .border(1.5.dp, if (anyNeed) AmbientColors.Arty else Color(0x33FFFFFF), RoundedCornerShape(20.dp))
+                        .clickable { menuOpen = !menuOpen },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Canvas(Modifier.size(26.dp).graphicsLayer { rotationZ = 45f * open.value }) {
+                        if (anyNeed) pGlow(center, size.minDimension, AmbientColors.Arty, 0.25f + 0.15f * sin(time.floatValue * 3f))
+                        val q = size.width * 0.42f
+                        val g = size.width - q * 2f
+                        for (i in 0 until 4) {
+                            val br = 1f + 0.06f * sin(time.floatValue * 2f + i)
+                            val x = (i % 2) * (q + g)
+                            val y = (i / 2) * (q + g)
+                            drawRoundRect(
+                                AmbientColors.Light, topLeft = Offset(x + q * (1f - br) / 2f, y + q * (1f - br) / 2f), size = Size(q * br, q * br),
+                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(q * 0.25f), style = Stroke(1.5f * density),
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                // aktueller Handgriff
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(Color(0x99101116))
+                        .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(50))
+                        .clickable { menuOpen = !menuOpen }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Canvas(Modifier.size(22.dp)) { drawCareGlyph(tool) }
+                    Spacer(Modifier.width(8.dp))
+                    Text(tool.label, style = pLabel.copy(fontSize = 10.sp, letterSpacing = 2.sp))
+                }
+            }
+            // Vorrat unten rechts
+            Column(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(20.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color(0x22FFFFFF))
+                    .clickable { stash = true }
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Canvas(Modifier.size(30.dp)) {
+                    pGlow(center, size.minDimension * 0.6f, AmbientColors.Gold, 0.3f)
+                    drawCircle(AmbientColors.Gold, radius = size.minDimension * 0.18f, center = center, style = Stroke(1.6f * density))
+                }
+                Text("VORRAT · ${d.giftCount}", style = pLabel.copy(fontSize = 10.sp))
             }
 
             NeedsPanel(d, needs, hour.floatValue, dayOver, Modifier.align(Alignment.TopEnd).padding(top = 84.dp, end = 20.dp).width(maxWidth * 0.32f)) { tool = it }
