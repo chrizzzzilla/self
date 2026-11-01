@@ -193,8 +193,14 @@ private class CalmState(val level: Int, val abilities: CalmAbilities) {
     var leftX = 0f
     /** Neigung der Welt in Grad (Boot) und Gegensteuern der linken Hand */
     var tilt = 0f
-    private var tiltVel = 0f
-    private var control = 0f
+    /** Lage des Balance-Punkts −1 … 1 (0 = Mitte) */
+    var bal = 0f
+    private var drift = 0f
+    private var driftVel = 0f
+    /** was der Daumen bisher verschoben hat (bleibt beim Loslassen erhalten) */
+    private var thumbOffset = 0f
+    private var thumbBase = 0f
+    private var thumbDownX = 0f
     var levelGood = 0f // 0..1 wie gerade man liegt (fuer die Wasserwaage)
     /** verbleibende Schilde in dieser Station */
     var shieldsLeft = abilities.shields
@@ -245,7 +251,7 @@ private class CalmState(val level: Int, val abilities: CalmAbilities) {
     var lightning = 0f
     private var nextLightning = 14f
     val lures = ArrayList<Lure>()
-    private var nextLure = if (level >= 3) 22f - d * 14f else 999f
+    private var nextLure = 999f // Verlockungen abgeschaltet (waren missverstaendlich)
     private val rnd = Random(level * 101)
 
     val inhale: Boolean get() = breathPhase < 0.5f
@@ -288,6 +294,8 @@ private class CalmState(val level: Int, val abilities: CalmAbilities) {
         if (hitLure(nx, ny)) return
         lastLX = nx; lastLY = ny; lastLT = t
         leftStartX = nx; leftX = nx
+        thumbDownX = nx
+        thumbBase = thumbOffset
         if (thoughtsMode) {
             grabbed = thoughts.filter { !it.gone }.minByOrNull { (it.x - nx) * (it.x - nx) + (it.y - ny) * (it.y - ny) }
                 ?.takeIf { abs(it.x - nx) < 0.12f && abs(it.y - ny) < 0.1f }
@@ -313,8 +321,10 @@ private class CalmState(val level: Int, val abilities: CalmAbilities) {
             }
         } else {
             leftX = nx
-            // hektisches Gegensteuern bringt Unruhe
-            if (speed > 1.4f) tiltVel += (if (rnd.nextBoolean()) 1f else -1f) * 6f
+            // 20 % der Bildschirmbreite ziehen = ganzer Ausschlag
+            thumbOffset = (thumbBase + (nx - thumbDownX) * 5f).coerceIn(-2f, 2f)
+            // hektisch hin und her bringt etwas Unruhe
+            if (speed > 2.2f) driftVel += (if (rnd.nextBoolean()) 1f else -1f) * 0.3f
         }
         lastLX = nx; lastLY = ny; lastLT = t
     }
@@ -426,18 +436,19 @@ private class CalmState(val level: Int, val abilities: CalmAbilities) {
             }
         }
 
-        // Balance (Station 6–10): Wellen kippen die Welt, die linke Hand steuert sanft dagegen
+        // Balance: Wind und Wellen lassen den Punkt wegdriften, der linke Daumen zieht ihn zurueck
         if (!thoughtsMode) {
-            control += ((if (leftPointer != null) (leftX - leftStartX) * 60f else 0f) - control) * min(1f, dt * 4f)
-            val rough = d // 0 (See) … 1 (Sturm)
-            val disturb = (sin(t * 0.33f) * 0.7f + sin(t * 0.81f + 2f) * 0.3f) * (2.5f + 8f * rough) + pushVel * 40f
-            tiltVel += (disturb - tilt * 0.8f + control) * dt * 1.5f
-            tiltVel *= (1f - min(1f, dt * 1.3f))
-            tilt = (tilt + tiltVel * dt).coerceIn(-25f, 25f)
-            levelGood = (1f - abs(tilt) / 10f).coerceIn(0f, 1f)
+            val strength = 0.12f + 0.45f * d
+            val noise = (sin(t * 0.41f) * 0.6f + sin(t * 1.13f + 2f) * 0.4f) * strength
+            driftVel += (noise + pushVel * 1.5f) * dt
+            driftVel *= (1f - min(1f, dt * 0.8f))
+            drift += driftVel * dt
+            bal = (drift + thumbOffset).coerceIn(-1f, 1f)
+            tilt = bal * 12f
+            levelGood = (1f - abs(bal) / 0.45f).coerceIn(0f, 1f)
             if (!out) {
-                if (abs(tilt) < 3f) energy = (energy + dt * 0.02f).coerceAtMost(1f)
-                else if (abs(tilt) > 9f) energy -= dt * 0.05f * (abs(tilt) / 9f)
+                if (abs(bal) < 0.15f) energy = (energy + dt * 0.02f).coerceAtMost(1f)
+                else if (abs(bal) > 0.55f) energy -= dt * 0.05f * abs(bal)
             }
         }
 
@@ -458,7 +469,7 @@ private class CalmState(val level: Int, val abilities: CalmAbilities) {
 
         // Verlockungen: glaenzende Lichter, die angetippt werden wollen
         if (t > nextLure && !out) {
-            nextLure = t + 22f - d * 14f + rnd.nextFloat() * 5f
+            nextLure = 999f
             val life = 3.2f
             val lx = if (lureWarnX >= 0f) lureWarnX else 0.15f + rnd.nextFloat() * 0.7f
             val ly = if (lureWarnY >= 0f) lureWarnY else 0.2f + rnd.nextFloat() * 0.45f
@@ -585,8 +596,8 @@ private fun DrawScope.drawCalm(s: CalmState, measurer: androidx.compose.ui.text.
         }
         at("Rechts: Finger auflegen,", w * 0.75f, h * 0.56f)
         at("wenn der Ring wächst.", w * 0.75f, h * 0.56f + 24.dp.toPx())
-        at("Links: sanft gegen", w * 0.25f, h * 0.56f)
-        at("die Neigung ziehen.", w * 0.25f, h * 0.56f + 24.dp.toPx())
+        at("Links: den Punkt mit dem Daumen", w * 0.25f, h * 0.56f)
+        at("in der Mitte halten (ziehen).", w * 0.25f, h * 0.56f + 24.dp.toPx())
     }
     // Licht aus → ruhige Saetze
     if (s.out) {
@@ -655,8 +666,8 @@ private fun DrawScope.drawThoughts(s: CalmState, measurer: androidx.compose.ui.t
 private fun DrawScope.drawSpiritLevel(s: CalmState) {
     val w = size.width
     val h = size.height
-    val c = Offset(w * 0.16f, h * 0.86f)
-    val r = min(w, h) * 0.09f
+    val c = Offset(w * 0.17f, h * 0.84f)
+    val r = min(w, h) * 0.13f
     val good = s.levelGood
     drawArc(
         Color.White.copy(alpha = 0.25f), startAngle = 200f, sweepAngle = 140f, useCenter = false,
@@ -664,11 +675,16 @@ private fun DrawScope.drawSpiritLevel(s: CalmState) {
     )
     // Mitte markieren
     drawLine(Color.White.copy(alpha = 0.4f), Offset(c.x, c.y - r - 6f * density), Offset(c.x, c.y - r + 6f * density), strokeWidth = 1.4f * density)
-    val ang = (270f + s.tilt * 3f).coerceIn(205f, 335f) * PI.toFloat() / 180f
+    val ang = (270f + s.bal * 62f) * PI.toFloat() / 180f
     val dot = Offset(c.x + cos(ang) * r, c.y + sin(ang) * r)
     val col = lerp(Color(0xFFE08A6A), AmbientColors.ArtyText, good)
-    drawCircle(col.copy(alpha = 0.35f), radius = 12f * density, center = dot, blendMode = BlendMode.Plus)
-    drawCircle(col, radius = 5f * density, center = dot)
+    // Mittelzone (hier soll der Punkt sein)
+    drawArc(
+        AmbientColors.ArtyText.copy(alpha = 0.45f), startAngle = 261f, sweepAngle = 18f, useCenter = false,
+        topLeft = Offset(c.x - r, c.y - r), size = Size(r * 2f, r * 2f), style = Stroke(5f * density, cap = StrokeCap.Round),
+    )
+    drawCircle(col.copy(alpha = 0.35f), radius = 16f * density, center = dot, blendMode = BlendMode.Plus)
+    drawCircle(col, radius = 7f * density, center = dot)
 }
 
 /** Ziel: ein Lichtpunkt wandert unten zum leuchtenden Ziel – man sieht, wie weit es noch ist. */
