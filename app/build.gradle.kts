@@ -29,6 +29,8 @@ android {
         versionCode = buildNumber
         versionName = if (isDevChannel) "0.1.$buildNumber-dev" else "0.1.$buildNumber"
         manifestPlaceholders["appLabel"] = if (isDevChannel) "Self Dev" else "Self"
+        // GeckoView bringt Browser-Bibliotheken fuer alle Prozessoren mit – Tablet und Handy sind arm64
+        ndk { abiFilters += listOf("arm64-v8a") }
     }
 
     signingConfigs {

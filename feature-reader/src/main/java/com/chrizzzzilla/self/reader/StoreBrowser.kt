@@ -37,6 +37,15 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import kotlinx.coroutines.launch
+import org.mozilla.geckoview.GeckoResult
+import org.mozilla.geckoview.GeckoSession
+import org.mozilla.geckoview.GeckoView
+import org.mozilla.geckoview.StorageController
+import org.mozilla.geckoview.WebResponse
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -99,28 +108,107 @@ internal class StoreDownload(
 }
 
 /**
- * Eingebauter Browser fuer die Buch-Quellen. Anmeldungen bleiben in den Cookies des Browsers
- * gespeichert (Self speichert keine Passwoerter). Startet die Seite einen Download, meldet er ihn
- * ueber [onDownload] – Self laedt die Datei dann selbst und nimmt sie in die Bibliothek auf.
+ * Eingebauter Browser fuer die Buch-Quellen – mit der Firefox-Technik (GeckoView), damit Webreader
+ * wie der von Tolino laufen, auch wenn die System-WebView des Geraets veraltet ist.
+ * Anmeldungen bleiben im Browser gespeichert (Self speichert keine Passwoerter). Startet die Seite
+ * einen Download, nimmt Self die Datei direkt entgegen und ueber [onDownload] in die Bibliothek auf.
  */
-@SuppressLint("SetJavaScriptEnabled")
 @Composable
 internal fun StoreBrowser(
     source: BookSource,
     onClose: () -> Unit,
     onDownload: (StoreDownload) -> Unit,
 ) {
-    var web by remember { mutableStateOf<WebView?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
     var progress by remember { mutableIntStateOf(0) }
     var pageTitle by remember { mutableStateOf("") }
-    var webKey by remember { mutableIntStateOf(0) }
+    var currentUrl by remember { mutableStateOf(source.url) }
+    var canGoBack by remember { mutableStateOf(false) }
+    var sessionKey by remember { mutableIntStateOf(0) }
     var notice by remember { mutableStateOf<String?>(null) }
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val runtime = remember { Gecko.runtime(context) }
+    val download by rememberUpdatedState(onDownload)
+    val setProgress: (Int) -> Unit = { progress = it }
+    val setCanGoBack: (Boolean) -> Unit = { canGoBack = it }
 
-    BackHandler {
-        val w = web
-        if (w != null && w.canGoBack()) w.goBack() else onClose()
+    val session = remember(sessionKey) {
+        GeckoSession().apply {
+            setContentDelegate(object : GeckoSession.ContentDelegate {
+                override fun onTitleChange(session: GeckoSession, title: String?) { pageTitle = title.orEmpty() }
+
+                override fun onExternalResponse(session: GeckoSession, response: WebResponse) {
+                    val headers = response.headers
+                    val cd = headers.entries.firstOrNull { it.key.equals("Content-Disposition", ignoreCase = true) }?.value
+                    val mime = headers.entries.firstOrNull { it.key.equals("Content-Type", ignoreCase = true) }?.value
+                    val name = URLUtil.guessFileName(response.uri, cd, mime)
+                    val probe = StoreDownload(response.uri, "", cd, mime, null, name)
+                    val body = response.body
+                    if (probe.isAdobeDrm || body == null) {
+                        runCatching { body?.close() }
+                        download(probe)
+                        return
+                    }
+                    notice = "Lade „$name“ …"
+                    scope.launch {
+                        val file = withContext(Dispatchers.IO) {
+                            runCatching {
+                                File(context.cacheDir, "gecko-${System.currentTimeMillis()}").also { f ->
+                                    body.use { input -> f.outputStream().use { input.copyTo(it) } }
+                                }
+                            }.getOrNull()
+                        }
+                        notice = null
+                        if (file == null) notice = "Der Download hat nicht geklappt." else download(StoreDownload(response.uri, "", cd, mime, file, name))
+                    }
+                }
+
+                override fun onCrash(session: GeckoSession) {
+                    notice = "Die Seite ist abgestürzt und wurde neu geladen."
+                    sessionKey++
+                }
+
+                override fun onKill(session: GeckoSession) {
+                    notice = "Die Seite wurde beendet und neu geladen."
+                    sessionKey++
+                }
+            })
+            setProgressDelegate(object : GeckoSession.ProgressDelegate {
+                override fun onProgressChange(session: GeckoSession, progress: Int) { setProgress(progress) }
+            })
+            setNavigationDelegate(object : GeckoSession.NavigationDelegate {
+                override fun onLocationChange(
+                    session: GeckoSession,
+                    url: String?,
+                    perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>,
+                    hasUserGesture: Boolean,
+                ) { if (url != null) currentUrl = url }
+
+                override fun onCanGoBack(session: GeckoSession, canGoBack: Boolean) { setCanGoBack(canGoBack) }
+
+                // Links mit neuem Fenster (target=_blank) im selben Browser oeffnen
+                override fun onNewSession(session: GeckoSession, uri: String): GeckoResult<GeckoSession>? {
+                    session.loadUri(uri)
+                    return null
+                }
+            })
+            open(runtime)
+            loadUri(currentUrl)
+        }
     }
+    DisposableEffect(session) { onDispose { runCatching { session.close() } } }
+
+    fun resetSite() {
+        val host = Uri.parse(source.url).host ?: return
+        runtime.storageController.clearDataFromHost(
+            host,
+            StorageController.ClearFlags.DOM_STORAGES or StorageController.ClearFlags.ALL_CACHES,
+        )
+        notice = "Webreader zurückgesetzt – das Buch noch einmal öffnen."
+        sessionKey++
+    }
+
+    BackHandler { if (canGoBack) session.goBack() else onClose() }
 
     Column(
         Modifier
@@ -149,14 +237,7 @@ internal fun StoreBrowser(
                 }
             }
             // Speicher der Seite leeren (z. B. bei „Browser Storage“-Fehlern im Webreader) – Anmeldung bleibt
-            IconButton(onClick = {
-                val origin = Uri.parse(source.url).let { u -> "${u.scheme}://${u.host}" }
-                WebStorage.getInstance().deleteOrigin(origin)
-                web?.clearCache(true)
-                notice = "Webreader zurückgesetzt – das Buch noch einmal öffnen."
-                web = null
-                webKey++
-            }) {
+            IconButton(onClick = { resetSite() }) {
                 androidx.compose.foundation.Canvas(Modifier.padding(12.dp).fillMaxSize()) {
                     val r = size.minDimension * 0.38f
                     drawArc(
@@ -169,7 +250,7 @@ internal fun StoreBrowser(
                     drawLine(AmbientColors.Light, tip, tip + androidx.compose.ui.geometry.Offset(-r * 0.6f, 0f), strokeWidth = 1.8f * density, cap = androidx.compose.ui.graphics.StrokeCap.Round)
                 }
             }
-            IconButton(onClick = { web?.url?.let { openExternal(context, it) } }) {
+            IconButton(onClick = { openExternal(context, currentUrl) }) {
                 Icon(painterResource(R.drawable.reader_ic_globe), stringResource(R.string.reader_open_in_browser), tint = AmbientColors.Light)
             }
             IconButton(onClick = onClose) {
@@ -190,122 +271,24 @@ internal fun StoreBrowser(
             Column(Modifier.fillMaxWidth().background(Color(0xFF15161C)).padding(horizontal = 20.dp, vertical = 10.dp)) {
                 Text(it, style = TextStyle(fontFamily = Manrope, fontSize = 13.sp, color = AmbientColors.Gold))
                 Row(Modifier.padding(top = 8.dp)) {
-                    NoticeAction("WEBREADER ZURÜCKSETZEN") {
-                        // Speicher der Seite (IndexedDB, Cache) leeren – Cookies/Anmeldung bleiben
-                        val origin = Uri.parse(source.url).let { u -> "${u.scheme}://${u.host}" }
-                        WebStorage.getInstance().deleteOrigin(origin)
-                        web?.clearCache(true)
-                        notice = "Webreader zurückgesetzt – das Buch noch einmal öffnen."
-                        web = null
-                        webKey++
-                    }
-                    NoticeAction("IM BROWSER ÖFFNEN") { (web?.url ?: source.url).let { openExternal(context, it) } }
+                    NoticeAction("WEBREADER ZURÜCKSETZEN") { resetSite() }
+                    NoticeAction("IM BROWSER ÖFFNEN") { openExternal(context, currentUrl) }
                     NoticeAction("OK") { notice = null }
                 }
             }
         }
-        androidx.compose.runtime.key(webKey) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
-            factory = { ctx ->
-                WebView(ctx).apply {
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-                    @Suppress("DEPRECATION")
-                    settings.databaseEnabled = true
-                    settings.loadWithOverviewMode = true
-                    settings.useWideViewPort = true
-                    CookieManager.getInstance().setAcceptCookie(true)
-                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                    webViewClient = SecureUpgradeClient {
-                        notice = "Die Seite ist beim Laden des Buchs abgestürzt und wurde neu geladen. Hilft es nicht: Webreader zurücksetzen (Anmeldung bleibt) oder im Browser öffnen."
-                        web = null
-                        webKey++
-                    }
-                    webChromeClient = object : WebChromeClient() {
-                        override fun onProgressChanged(view: WebView?, newProgress: Int) { progress = newProgress }
-                        override fun onReceivedTitle(view: WebView?, title: String?) { pageTitle = title.orEmpty() }
-                    }
-                    val main = Handler(Looper.getMainLooper())
-                    // blob:-Downloads (Webreader) holt eine kleine Bruecke als Base64 aus der Seite
-                    addJavascriptInterface(object {
-                        @JavascriptInterface
-                        fun onBlob(base64: String, mime: String?, name: String?) {
-                            val file = runCatching {
-                                File(ctx.cacheDir, "blob-${System.currentTimeMillis()}").apply {
-                                    writeBytes(Base64.decode(base64, Base64.DEFAULT))
-                                }
-                            }.getOrNull() ?: return
-                            main.post { onDownload(StoreDownload("blob:", settings.userAgentString, null, mime, file, name)) }
-                        }
-
-                        @JavascriptInterface
-                        fun onTooBig() {
-                            main.post { notice = "Diese Datei ist zu groß, um sie aus dem Webreader zu übernehmen." }
-                        }
-                    }, "SelfBridge")
-                    setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
-                        when {
-                            url.startsWith("blob:") -> evaluateJavascript(blobFetchJs(url, mimeType, URLUtil.guessFileName(url, contentDisposition, mimeType)), null)
-                            url.startsWith("data:") -> {
-                                val file = runCatching {
-                                    File(ctx.cacheDir, "data-${System.currentTimeMillis()}").apply {
-                                        writeBytes(Base64.decode(url.substringAfter("base64,"), Base64.DEFAULT))
-                                    }
-                                }.getOrNull()
-                                if (file != null) main.post { onDownload(StoreDownload(url.take(40), userAgent, contentDisposition, mimeType, file)) }
-                            }
-                            // nicht im Rueckruf des Browsers selbst weitermachen (er wird danach geschlossen)
-                            else -> main.post { onDownload(StoreDownload(url, userAgent, contentDisposition, mimeType)) }
-                        }
-                    }
-                    loadUrl(source.url)
-                    web = this
+            factory = { ctx -> GeckoView(ctx) },
+            update = { v ->
+                if (v.tag !== session) {
+                    v.releaseSession()
+                    v.setSession(session)
+                    v.tag = session
                 }
             },
-            onRelease = { w ->
-                // erst nach dem aktuellen Rueckruf zerstoeren – sonst kann der Browser abstuerzen
-                w.setDownloadListener(null)
-                w.stopLoading()
-                Handler(Looper.getMainLooper()).post { runCatching { w.destroy() } }
-            },
+            onRelease = { v -> runCatching { v.releaseSession() } },
         )
-        }
-    }
-}
-
-/**
- * Manche Shops (z. B. der Tolino-Webreader) leiten zwischendurch auf http:// um. Android blockiert
- * unverschluesselte Verbindungen (ERR_CLEARTEXT_NOT_PERMITTED) – statt das zu erlauben, wird der
- * Aufruf auf https:// umgeschrieben.
- */
-private class SecureUpgradeClient(private val onGone: () -> Unit) : WebViewClient() {
-    /** Der Seiten-Prozess ist abgestuerzt (z. B. zu wenig Speicher) → nicht die App schliessen lassen, sondern neu laden. */
-    override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
-        onGone()
-        return true
-    }
-
-    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-        val url = request.url
-        // fremde Schemata (intent:, mailto: …) nicht im Browser laden
-        if (url.scheme !in setOf("http", "https", "about", "blob", "data", "javascript")) {
-            runCatching { view.context.startActivity(Intent(Intent.ACTION_VIEW, url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-            return true
-        }
-        if (url.scheme == "http") {
-            view.loadUrl(url.buildUpon().scheme("https").build().toString())
-            return true
-        }
-        return false
-    }
-
-    override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
-        super.onReceivedError(view, request, error)
-        // Hauptseite per http aufgerufen (z. B. durch Weiterleitung) → einmal mit https versuchen
-        if (request.isForMainFrame && request.url.scheme == "http") {
-            view.loadUrl(request.url.buildUpon().scheme("https").build().toString())
-        }
     }
 }
 
@@ -334,24 +317,6 @@ private fun openExternal(context: Context, url: String) {
         if (ok) return
     }
     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-}
-
-/** JavaScript: blob-URL in der Seite lesen und als Base64 an Self geben. */
-private fun blobFetchJs(url: String, mime: String?, name: String?): String {
-    fun q(s: String?) = "'" + (s ?: "").replace("\\", "\\\\").replace("'", "\\'") + "'"
-    return """
-        (function(){
-          fetch(${q(url)}).then(function(r){ return r.blob(); }).then(function(b){
-            if (b.size > 60 * 1024 * 1024) { SelfBridge.onTooBig(); return; }
-            var fr = new FileReader();
-            fr.onloadend = function(){
-              var s = String(fr.result); var i = s.indexOf(',');
-              SelfBridge.onBlob(s.substring(i + 1), b.type || ${q(mime)}, ${q(name)});
-            };
-            fr.readAsDataURL(b);
-          });
-        })();
-    """.trimIndent()
 }
 
 /** Laedt eine Datei aus dem eingebauten Browser (mit dessen Anmelde-Cookies) in den Cache. */

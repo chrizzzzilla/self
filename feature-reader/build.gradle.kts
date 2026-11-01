@@ -23,6 +23,7 @@ android {
 }
 
 dependencies {
+    implementation(libs.geckoview)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     implementation(project(":core"))
