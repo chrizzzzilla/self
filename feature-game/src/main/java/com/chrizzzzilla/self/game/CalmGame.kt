@@ -49,9 +49,13 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 /** Dauer einer Runde in Sekunden (4 Runden = 10 Minuten am Tag). */
-private const val ROUND_SECONDS = 150f
+private const val ROUND_SECONDS = 60f
 
-private val LEVEL_NAMES = arrayOf("STILLER SEE", "STRAND", "IM BOOT", "STURM")
+/** Die 10 Stationen eines Tages – von ganz still bis Sturm. */
+private val LEVEL_NAMES = arrayOf(
+    "STILLER SEE", "SEE AM ABEND", "RUHIGER STRAND", "STRAND IM WIND", "BRANDUNG",
+    "IM BOOT", "DÜNUNG", "AUFKOMMENDER WIND", "STURM", "IM HERZEN DES STURMS",
+)
 
 /**
  * Spiel „Ruhe“. Ein Licht lebt von deinem ruhigen Atem:
@@ -62,7 +66,7 @@ private val LEVEL_NAMES = arrayOf("STILLER SEE", "STRAND", "IM BOOT", "STURM")
  */
 @Composable
 internal fun CalmGame(level: Int, abilities: CalmAbilities, onComplete: () -> Unit, onExit: () -> Unit) {
-    val state = remember(level) { CalmState(level.coerceIn(1, 4), abilities) }
+    val state = remember(level) { CalmState(level.coerceIn(1, 10), abilities) }
     val tick = remember { mutableFloatStateOf(0f) }
     val measurer = rememberTextMeasurer()
 
@@ -124,6 +128,9 @@ internal fun CalmGame(level: Int, abilities: CalmAbilities, onComplete: () -> Un
 // Spiellogik
 // ==========================================================================================
 
+/** 8 Sekunden Verlauf bei 20 Werten pro Sekunde */
+private const val HIST = 160
+
 private class Lure(var x: Float, var y: Float, var life: Float, val max: Float) {
     var tapped = false
 }
@@ -148,23 +155,32 @@ private class CalmState(val level: Int, val abilities: CalmAbilities) {
     var finishT = 0f
     var bloom = 0f
     var shown = 0.45f // sanft nachgefuehrte Energie fuer die Anzeige
+    /** dein Atem als Kurve 0..1 (steigt beim Halten, sinkt beim Loslassen) */
+    var userBreath = 0f
+    /** Verlauf der letzten Sekunden: Ideal + du (fuer die Atem-Linie) */
+    val histIdeal = FloatArray(HIST)
+    val histUser = FloatArray(HIST)
+    var histPos = 0
+    private var histAcc = 0f
 
     // Atemtakt
-    private val period = when (level) { 1 -> 10f; 2 -> 10f; 3 -> 9.5f; else -> 9f }
-    private val irregular = when (level) { 1 -> 0f; 2 -> 0.04f; 3 -> 0.12f; else -> 0.2f }
+    /** Schwierigkeit 0 (Station 1) … 1 (Station 10) */
+    val d: Float = (level - 1) / 9f
+    private val period = 10f - d * 1.2f
+    private val irregular = if (level <= 2) 0f else d * 0.22f
     var breathPhase = 0f // 0..1, < 0.5 = einatmen
-    private val tolerance = when (level) { 1 -> 0.9f; 2 -> 0.75f; 3 -> 0.6f; else -> 0.5f } + abilities.calmBreath
-    private val penalty = when (level) { 1 -> 0.05f; 2 -> 0.07f; 3 -> 0.09f; else -> 0.12f }
+    private val tolerance = 0.95f - d * 0.5f + abilities.calmBreath
+    private val penalty = 0.05f + d * 0.08f
 
     // Stoerungen
     var push = 0f        // seitliche Verschiebung des Lichts (Welle/Wind)
     var pushVel = 0f
-    private var nextWave = if (level >= 2) 9f else 999f
+    private var nextWave = if (level >= 4) 6f else 999f
     var waveT = -10f
     var lightning = 0f
     private var nextLightning = 14f
     val lures = ArrayList<Lure>()
-    private var nextLure = when (level) { 1 -> 999f; 2 -> 40f; 3 -> 18f; else -> 10f }
+    private var nextLure = if (level >= 3) 22f - d * 14f else 999f
     private val rnd = Random(level * 101)
 
     val inhale: Boolean get() = breathPhase < 0.5f
@@ -217,6 +233,14 @@ private class CalmState(val level: Int, val abilities: CalmAbilities) {
         val speed = 1f + irregular * (sin(t * 0.37f) * 0.7f + sin(t * 0.91f + 1.3f) * 0.3f)
         breathPhase = (breathPhase + dt / period * speed) % 1f
 
+        userBreath += ((if (holding) 1f else 0f) - userBreath) * min(1f, dt * 1.1f)
+        histAcc += dt
+        if (histAcc >= 1f / 20f) {
+            histAcc = 0f
+            histIdeal[histPos] = breath
+            histUser[histPos] = userBreath
+            histPos = (histPos + 1) % HIST
+        }
         mistakeFlash = (mistakeFlash - dt * 1.5f).coerceAtLeast(0f)
         shieldFlash = (shieldFlash - dt * 1.2f).coerceAtLeast(0f)
         // Vorahnung: kurz vor einer Welle bzw. Verlockung leise ankuendigen
@@ -253,21 +277,21 @@ private class CalmState(val level: Int, val abilities: CalmAbilities) {
         // Wellen / Wind schieben das Licht
         if (t > nextWave) {
             waveT = t
-            nextWave = t + when (level) { 2 -> 11f; 3 -> 8f; else -> 6f } + rnd.nextFloat() * 4f
-            pushVel += (if (rnd.nextBoolean()) 1f else -1f) * (0.12f + 0.05f * level)
+            nextWave = t + 12f - d * 7f + rnd.nextFloat() * 4f
+            pushVel += (if (rnd.nextBoolean()) 1f else -1f) * (0.1f + 0.25f * d)
         }
         pushVel += (-push * 2.2f - pushVel * 1.4f) * dt
         push += pushVel * dt
 
         // Blitze im Sturm
-        if (level == 4 && t > nextLightning) {
+        if (level >= 9 && t > nextLightning) {
             lightning = 1f
             nextLightning = t + 10f + rnd.nextFloat() * 12f
         }
 
         // Verlockungen: glaenzende Lichter, die angetippt werden wollen
         if (t > nextLure && !out) {
-            nextLure = t + when (level) { 2 -> 35f; 3 -> 16f; else -> 9f } + rnd.nextFloat() * 6f
+            nextLure = t + 22f - d * 14f + rnd.nextFloat() * 5f
             val life = 3.2f
             val lx = if (lureWarnX >= 0f) lureWarnX else 0.15f + rnd.nextFloat() * 0.7f
             val ly = if (lureWarnY >= 0f) lureWarnY else 0.2f + rnd.nextFloat() * 0.45f
@@ -303,9 +327,10 @@ private fun DrawScope.drawCalm(s: CalmState, measurer: androidx.compose.ui.text.
     val progress = (s.t / ROUND_SECONDS).coerceIn(0f, 1f)
 
     when (s.level) {
-        1 -> drawLake(s.t, progress)
-        2 -> drawBeach(s.t, progress, s)
-        else -> drawBoat(s.t, progress, s, storm = s.level == 4)
+        1 -> drawLake(s.t, progress, evening = false)
+        2 -> drawLake(s.t, progress, evening = true)
+        3, 4, 5 -> drawBeach(s.t, progress, s)
+        else -> drawBoat(s.t, progress, s, storm = s.level >= 9)
     }
 
     // Licht + Atemring
@@ -363,6 +388,9 @@ private fun DrawScope.drawCalm(s: CalmState, measurer: androidx.compose.ui.text.
     // Blitz
     if (s.lightning > 0f) drawRect(Color.White.copy(alpha = 0.55f * s.lightning.pow(2)))
 
+    drawBreathLine(s)
+    drawGoal(s, progress)
+
     // Texte
     val style = TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Light, fontSize = 20.sp, letterSpacing = 1.sp, color = AmbientColors.Light)
     val small = TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Medium, fontSize = 12.sp, letterSpacing = 6.sp, color = AmbientColors.Light)
@@ -391,19 +419,66 @@ private fun DrawScope.drawCalm(s: CalmState, measurer: androidx.compose.ui.text.
     }
 }
 
+/**
+ * Atem-Linie: fein die ideale Kurve, darueber deine eigene (blau). Liegen sie aufeinander,
+ * leuchtet deine Linie – das ist die Balance.
+ */
+private fun DrawScope.drawBreathLine(s: CalmState) {
+    val w = size.width
+    val h = size.height
+    val left = w * 0.3f
+    val right = w * 0.7f
+    val top = h * 0.74f
+    val height = h * 0.08f
+    val ideal = Path()
+    val user = Path()
+    var diff = 0f
+    for (i in 0 until HIST) {
+        val idx = (s.histPos + i) % HIST
+        val x = left + (right - left) * i / (HIST - 1)
+        val yi = top + height * (1f - s.histIdeal[idx])
+        val yu = top + height * (1f - s.histUser[idx])
+        if (i == 0) { ideal.moveTo(x, yi); user.moveTo(x, yu) } else { ideal.lineTo(x, yi); user.lineTo(x, yu) }
+        if (i > HIST - 40) diff += abs(s.histIdeal[idx] - s.histUser[idx])
+    }
+    val balance = (1f - diff / 40f * 2.2f).coerceIn(0f, 1f)
+    drawPath(ideal, Color.White.copy(alpha = 0.22f), style = Stroke(width = 1.2f * density))
+    if (balance > 0.5f) {
+        drawPath(user, AmbientColors.ArtyText.copy(alpha = 0.35f * balance), style = Stroke(width = 7f * density, cap = StrokeCap.Round), blendMode = BlendMode.Plus)
+    }
+    drawPath(user, lerp(AmbientColors.Muted, AmbientColors.ArtyText, balance), style = Stroke(width = 2f * density, cap = StrokeCap.Round))
+}
+
+/** Ziel: ein Lichtpunkt wandert unten zum leuchtenden Ziel – man sieht, wie weit es noch ist. */
+private fun DrawScope.drawGoal(s: CalmState, progress: Float) {
+    val w = size.width
+    val h = size.height
+    val y = h * 0.9f
+    val x0 = w * 0.3f
+    val x1 = w * 0.7f
+    drawLine(Color.White.copy(alpha = 0.18f), Offset(x0, y), Offset(x1, y), strokeWidth = 1.2f * density, cap = StrokeCap.Round)
+    val px = x0 + (x1 - x0) * progress
+    drawLine(AmbientColors.Gold.copy(alpha = 0.7f), Offset(x0, y), Offset(px, y), strokeWidth = 1.6f * density, cap = StrokeCap.Round)
+    val goal = Offset(x1, y)
+    val gp = 0.6f + 0.4f * sin(s.t * 2f)
+    drawCircle(Brush.radialGradient(listOf(Color(0xFFFFE6B0).copy(alpha = 0.5f * gp), Color.Transparent), center = goal, radius = 22f * density), radius = 22f * density, center = goal, blendMode = BlendMode.Plus)
+    drawCircle(Color(0xFFFFF4DA), radius = 3.5f * density, center = goal)
+    drawCircle(AmbientColors.Light, radius = 4f * density, center = Offset(px, y))
+}
+
 private fun smoothIn(t: Float, a: Float, b: Float): Float {
     val x = ((t - a) / (b - a)).coerceIn(0f, 1f)
     return x * x * (3f - 2f * x)
 }
 
 // ---------- Level 1: Stiller See ----------
-private fun DrawScope.drawLake(t: Float, p: Float) {
+private fun DrawScope.drawLake(t: Float, p: Float, evening: Boolean) {
     val w = size.width
     val h = size.height
     val horizon = h * 0.58f
     val lift = 0.25f + 0.75f * p // wird im Lauf der Runde heller
-    val top = lerp(Color(0xFF1C2440), Color(0xFF6E86B8), lift)
-    val hor = lerp(Color(0xFF5A4A6A), Color(0xFFF2C394), lift)
+    val top = if (evening) lerp(Color(0xFF2A1E40), Color(0xFF6A5A9A), lift) else lerp(Color(0xFF1C2440), Color(0xFF6E86B8), lift)
+    val hor = if (evening) lerp(Color(0xFF6A3A50), Color(0xFFF0926A), lift) else lerp(Color(0xFF5A4A6A), Color(0xFFF2C394), lift)
     drawRect(Brush.verticalGradient(listOf(top, hor), startY = 0f, endY = horizon))
     // Sonne knapp ueber dem Horizont
     val sun = Offset(w * 0.5f, horizon - h * 0.04f * lift)
@@ -452,7 +527,7 @@ private fun DrawScope.drawBeach(t: Float, p: Float, s: CalmState) {
     drawRect(sand, topLeft = Offset(0f, h * 0.72f), size = Size(w, h * 0.28f))
     // Brandung: Schaumlinie laeuft den Strand hoch (staerker bei Wellen-Ereignis)
     val since = s.t - s.waveT
-    val surge = if (since in 0f..4f) sin(since / 4f * PI.toFloat()) else 0f
+    val surge = (if (since in 0f..4f) sin(since / 4f * PI.toFloat()) else 0f) * (0.6f + (s.level - 3) * 0.3f)
     val shore = h * 0.72f + (sin(t * 2f * PI.toFloat() / 8f) * 0.5f + 0.5f) * h * 0.05f + surge * h * 0.06f
     drawRect(lerp(sand, Color(0xFF8E7A5E), 0.35f), topLeft = Offset(0f, h * 0.72f), size = Size(w, shore - h * 0.72f))
     val foam = Path()
@@ -464,7 +539,7 @@ private fun DrawScope.drawBeach(t: Float, p: Float, s: CalmState) {
     }
     drawPath(foam, Color.White.copy(alpha = 0.7f), style = Stroke(width = 3f * density, cap = StrokeCap.Round))
     // Duenengras links, im Lueftchen
-    val gust = (sin(t * 0.25f) * 0.5f + 0.5f).pow(3)
+    val gust = (sin(t * 0.25f) * 0.5f + 0.5f).pow(3) * (if (s.level >= 4) 1f else 0.3f)
     for (i in 0 until 22) {
         val bx = w * 0.02f + i * w * 0.006f
         val by = h * 0.98f
@@ -478,7 +553,8 @@ private fun DrawScope.drawBeach(t: Float, p: Float, s: CalmState) {
 private fun DrawScope.drawBoat(t: Float, p: Float, s: CalmState, storm: Boolean) {
     val w = size.width
     val h = size.height
-    val roll = if (storm) sin(t * 0.7f) * 6f + sin(t * 1.3f) * 2.5f else sin(t * 0.55f) * 2.6f + sin(t * 1.1f) * 0.9f
+    val rough = ((s.level - 6) / 4f).coerceIn(0f, 1f) // 0 = Station 6 … 1 = Station 10
+    val roll = sin(t * (0.5f + 0.25f * rough)) * (2.2f + 5f * rough) + sin(t * 1.2f) * (0.8f + 2f * rough)
     val bob = (if (storm) 0.02f else 0.01f) * h * sin(t * (if (storm) 1.1f else 0.8f))
     val horizon = h * 0.46f + bob
 
@@ -499,7 +575,7 @@ private fun DrawScope.drawBoat(t: Float, p: Float, s: CalmState, storm: Boolean)
         val seaTop = if (storm) Color(0xFF1C2C34) else Color(0xFF2E5868)
         val seaBot = if (storm) Color(0xFF0C161C) else Color(0xFF1C3A48)
         drawRect(Brush.verticalGradient(listOf(seaTop, seaBot), startY = horizon, endY = h * 1.2f), topLeft = Offset(-w * 0.2f, horizon), size = Size(w * 1.4f, h * 1.2f - horizon))
-        val amp = if (storm) 1f else 0.45f
+        val amp = 0.35f + 0.75f * rough
         for (k in 0 until 12) {
             val q = ((t * (if (storm) 0.09f else 0.05f) + k / 12f) % 1f)
             val y = horizon + (h - horizon) * q.pow(1.7f)

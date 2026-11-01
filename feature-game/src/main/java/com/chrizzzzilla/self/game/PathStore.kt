@@ -26,8 +26,8 @@ internal data class CalmProgress(
 
 /**
  * Fortschritt der Path-Spiele.
- * Ruhe: 4 Stationen pro Tag (je 2,5 Min.). Station n bringt n Punkte (ein voller Tag = 10).
- * Level 1→2 braucht 10 Punkte, danach je ~25 % mehr – oben langsamer, aber nie zaeh.
+ * Ruhe: 10 Stationen pro Tag (je 1 Min.). Station n bringt n Punkte (ein voller Tag = 55).
+ * Level 1→2 braucht 55 Punkte, danach je ~25 % mehr – oben langsamer, aber nie zaeh.
  */
 internal class PathStore(context: Context) {
     private val store = context.applicationContext.pathStore
@@ -61,10 +61,10 @@ internal class PathStore(context: Context) {
     }
 
     companion object {
-        const val STATIONS_PER_DAY = 4
+        const val STATIONS_PER_DAY = 10
 
         /** Punkte, die man von Level [level] zum naechsten braucht. */
-        fun needed(level: Int): Int = (10.0 * 1.25.pow(level - 1)).roundToInt()
+        fun needed(level: Int): Int = (55.0 * 1.25.pow(level - 1)).roundToInt()
 
         fun levelFor(xp: Int): Pair<Int, Float> {
             var level = 1
