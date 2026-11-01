@@ -14,16 +14,21 @@ val keystorePassword: String? = System.getenv("SELF_KEYSTORE_PASSWORD")
 val keyAliasName: String? = System.getenv("SELF_KEY_ALIAS")
 val hasReleaseKey = keystorePath != null && keystorePassword != null && keyAliasName != null
 
+// Vorschau-Kanal: Builds vom Branch "dev" werden zur eigenen App "Self Dev"
+// (andere App-ID → laeuft neben der normalen App, mit eigener Bibliothek).
+val isDevChannel = System.getenv("SELF_CHANNEL") == "dev"
+
 android {
     namespace = "com.chrizzzzilla.self"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.chrizzzzilla.self"
+        applicationId = if (isDevChannel) "com.chrizzzzilla.self.dev" else "com.chrizzzzilla.self"
         minSdk = 26
         targetSdk = 37
         versionCode = buildNumber
-        versionName = "0.1.$buildNumber"
+        versionName = if (isDevChannel) "0.1.$buildNumber-dev" else "0.1.$buildNumber"
+        manifestPlaceholders["appLabel"] = if (isDevChannel) "Self Dev" else "Self"
     }
 
     signingConfigs {

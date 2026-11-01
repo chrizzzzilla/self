@@ -2,7 +2,7 @@ name: APK bauen
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
     # Reine Doku-Aenderungen erzeugen keine neue App-Version.
     paths-ignore:
       - "**.md"
@@ -21,6 +21,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+
+    # dev  → Vorschau-App "Self Dev" (Pre-Release, eigene App neben der normalen)
+    # main → normale App "Self"
+    env:
+      SELF_CHANNEL: ${{ github.ref == 'refs/heads/dev' && 'dev' || 'stable' }}
+      APK_NAME: ${{ github.ref == 'refs/heads/dev' && 'self-dev' || 'self' }}-0.1.${{ github.run_number }}
 
     steps:
       - name: Code holen
@@ -62,18 +68,18 @@ jobs:
       - name: APK umbenennen
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/release/app-release.apk "out/self-0.1.${{ github.run_number }}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "out/$APK_NAME.apk"
           ls -l out
 
       - name: APK als Artifact hochladen
         uses: actions/upload-artifact@v7
         with:
-          name: self-0.1.${{ github.run_number }}
+          name: ${{ env.APK_NAME }}
           path: out/*.apk
           if-no-files-found: error
 
-      # Release nur bei Push auf main – Obtainium holt sich von hier die Updates.
-      - name: GitHub-Release anlegen
+      # Obtainium holt sich die Updates aus den Releases.
+      - name: GitHub-Release anlegen (Self)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -83,3 +89,20 @@ jobs:
             --title "Self 0.1.${{ github.run_number }}" \
             --notes "Automatischer Build von ${GITHUB_SHA::7}: ${COMMIT_MSG%%$'\n'*}" \
             --target "$GITHUB_SHA"
+
+      - name: Vorschau-Release anlegen (Self Dev)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          gh release create "v0.1.${{ github.run_number }}-dev" out/*.apk \
+            --prerelease \
+            --title "Self Dev 0.1.${{ github.run_number }}" \
+            --notes "Vorschau von ${GITHUB_SHA::7}: ${COMMIT_MSG%%$'\n'*}" \
+            --target "$GITHUB_SHA"
+          # Nur die 5 neuesten Vorschau-Releases behalten.
+          gh release list --limit 100 --json tagName,isPrerelease \
+            --jq '.[] | select(.isPrerelease) | .tagName' \
+            | tail -n +6 \
+            | while read -r tag; do gh release delete "$tag" --yes --cleanup-tag; done
