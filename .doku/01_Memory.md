@@ -1,5 +1,13 @@
 # Self — Session-Memory (neueste oben)
 
+## 2026-11-01 — Session 1d: Entspannungs-Look (0.1.8) [Rechner: Office]
+- Leitbild (Chris): wirklich entspannende App, Stil wie  (fast schwarz, warmes Licht,
+  Partikel-Sprites mit Plus-Blending, Staub mit Tiefe, Lichtfäden Weiß/Gold, Arty-Blau #6888EC, Manrope) – nicht comichaft.
+- : AmbientTheme, AmbientBackground, ArtySwarm, TypewriterLabel (Bounce), ArtyButton, ArtyMini.
+- Statusleiste + Navigationsleiste immer aus (, auch Cutout). Leere Bibliothek ohne Texte, nur Arty.
+- Higgsfield: kein Zugriff von hier; Chris erzeugt Videos selbst (Prompts geliefert) → später Video-Hintergrund einbauen.
+- Orell Füssli: nur Wasserzeichen-EPUBs gehen, Adobe DRM (.acsm) nicht.
+
 ## 2026-11-01 — Session 1c: Nachtstadt hinter dem Buch + Klang-Mixer (0.1.7) [Rechner: Office]
 
 ### Zuletzt fertiggestellt
