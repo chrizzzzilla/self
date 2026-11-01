@@ -1,5 +1,20 @@
 # Self — Session-Memory (neueste oben)
 
+## 2026-11-01 — Session 1b: Fokus-Bereich v1 [Rechner: Office]
+
+### Zuletzt fertiggestellt
+- Nur noch EIN Kanal: Push auf `main` → Release → Obtainium (Chris wollte kein „Self Dev“; der Code dafür liegt
+  ungenutzt im Workflow / `SELF_CHANNEL`).
+- Fokus v1 (0.1.4): `LofiSynth` (generative Lofi-Musik), `FocusPlayer` (AudioTrack-Thread, Audio-Fokus,
+  = `SelfCore.focusAudio`), `WindowScene` (Canvas: Altstadt, Tageszeit nach Uhrzeit, Regen, Pflanze, Tasse, Lampe).
+
+### Nächster Schritt
+- Chris' Feedback zu Klang + Bild auf dem Tablet.
+- Figur (schreibt / schaut aus dem Fenster): NICHT Lofi Girl nachbauen (geschützt, Repo öffentlich).
+  Weg: eigene Bilder von Chris als Ebenen → animieren.
+- Foreground-Service + Benachrichtigung (Musik bei ausgeschaltetem Bildschirm), Regler-Werte speichern,
+  Fokus-/Sleep-Timer, Presets.
+
 ## 2026-11-01 — Session 1: Grundgerüst + EPUB-Reader [Rechner: Office]
 
 ### Zuletzt fertiggestellt
