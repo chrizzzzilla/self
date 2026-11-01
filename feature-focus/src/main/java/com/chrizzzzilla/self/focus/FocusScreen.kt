@@ -39,11 +39,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.chrizzzzilla.self.focus.audio.LofiParams
-import com.chrizzzzilla.self.focus.scene.WindowScene
+import com.chrizzzzilla.self.focus.scene.CityScene
 import kotlin.math.roundToInt
 
 /**
- * Fokus-Bereich: animierte Fensterszene + generative Lofi-Musik.
+ * Fokus-Bereich: animierte Nachtstadt + generative Lofi-Musik.
  * Tippen auf das Bild blendet die Regler ein/aus. Solange der Bereich offen ist,
  * bleibt der Bildschirm an.
  */
@@ -60,9 +60,10 @@ fun FocusScreen(modifier: Modifier = Modifier) {
     }
 
     Box(modifier.fillMaxSize()) {
-        WindowScene(
+        CityScene(
             rain = params.rain,
             pulse = { if (playing) FocusPlayer.pulse else 0f },
+            level = { if (playing) FocusPlayer.level * 3f else 0f },
             modifier = Modifier
                 .fillMaxSize()
                 .clickable(
