@@ -240,6 +240,18 @@ internal fun GardenGame(onExit: () -> Unit) {
             target.value = (px - fig.facing * 0.0f + 0.05f) to (py + 0.1f).coerceAtMost(0.96f)
             if (dayOver) { say("Feierabend – der Garten wartet bis morgen."); return }
             val k = p.kind
+            if (k == null) {
+                val s = seed?.takeIf { (d.seeds[it] ?: 0) > 0 } ?: PlantKind.entries.firstOrNull { (d.seeds[it] ?: 0) > 0 }
+                if (s == null) { say("Keine Samen mehr – ernten bringt neue."); return }
+                d.seeds[s] = (d.seeds[s] ?: 0) - 1
+                d.plots[i].apply { kind = s; stage = 0; water = 0f; tooMuch = false; weed = false }
+                fig.gather = 0.4f
+                sparkles += Sparkle(px, py - 0.02f, s.color, time.floatValue, false)
+                say("${s.label} gepflanzt – jetzt gießen.")
+                if (tool == GardenTool.SEED && (d.seeds[s] ?: 0) <= 0) tool = GardenTool.CAN
+                version++
+                return
+            }
             when (tool) {
                 GardenTool.CAN -> when {
                     k == null -> say("Hier wächst noch nichts – erst einen Samen pflanzen.")
@@ -463,7 +475,7 @@ private fun gardenHint(d: GardenData, dayOver: Boolean): String {
         return "${it.kind!!.label} gießen · Beet halten, bis die Anzeige im hellen Feld ist"
     }
     val hasSeeds = d.seeds.values.any { it > 0 }
-    if (hasSeeds && d.plots.any { it.kind == null }) return "Samen unten wählen · auf ein leeres Beet tippen"
+    if (hasSeeds && d.plots.any { it.kind == null }) return "Auf ein leeres Beet tippen zum Pflanzen"
     return "Alles versorgt · führe den Finger langsam durch den Garten"
 }
 
@@ -802,7 +814,6 @@ private fun DrawScope.drawGarden(
         val a = (0.1f + gHash(k + 250) * 0.25f) * (0.6f + 0.4f * sin(t * 0.8f + k))
         drawCircle(Color(0xFFE8E0FF).copy(alpha = a), radius = (0.8f + gHash(k + 300) * 1.4f) * density, center = Offset(px, py), blendMode = BlendMode.Plus)
     }
-    drawFigure(fig, t, 0.8f)
     // Funkeln (Ernte, Pflanzen, richtig gegossen, Fund)
     for (s in sparkles) {
         val e = t - s.t0

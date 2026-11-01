@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.sp
 import com.chrizzzzilla.self.core.design.AmbientColors
 import com.chrizzzzilla.self.core.design.ArtySun
 import com.chrizzzzilla.self.core.design.Manrope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.cos
@@ -138,25 +139,35 @@ fun GameScreen(modifier: Modifier = Modifier, onOverlayChanged: (Boolean) -> Uni
         }
 
         // Aufstieg: kurz zeigen, was an innerer Ruhe dazugekommen ist
-        levelUp?.let { lv ->
+        if (!playing) levelUp?.let { lv ->
             LevelUpBanner(lv, CalmAbilities.unlocked(lv), Modifier.align(Alignment.Center)) { levelUp = null }
         }
     }
 
     if (playing) {
         val station = (calm.stationsToday + 1).coerceIn(1, PathStore.STATIONS_PER_DAY)
-        CalmGame(
-            level = station,
-            abilities = CalmAbilities(calm.level),
-            onComplete = { passed ->
-                scope.launch {
-                    val (before, after) = store.completeCalmStation(station, passed)
-                    playing = false
-                    if (after > before) levelUp = after
-                }
-            },
-            onExit = { playing = false },
-        )
+        // neue Runde je Versuch (auch bei gleicher Station)
+        androidx.compose.runtime.key(calm.attemptsToday) {
+            CalmGame(
+                level = station,
+                abilities = CalmAbilities(calm.level),
+                onComplete = { passed ->
+                    scope.launch {
+                        val (before, after) = store.completeCalmStation(station, passed)
+                        if (after > before) levelUp = after
+                        // weiter zur naechsten Station – erst am Tageslimit zurueck
+                        val p = store.calm.first()
+                        if (p.attemptsToday >= PathStore.STATIONS_PER_DAY || p.stationsToday >= PathStore.STATIONS_PER_DAY) playing = false
+                    }
+                },
+                onExit = { playing = false },
+            )
+        }
+        levelUp?.let { lv ->
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                LevelUpBanner(lv, CalmAbilities.unlocked(lv), Modifier) { levelUp = null }
+            }
+        }
     }
 
     if (workshop) WorkshopGame(onExit = { workshop = false })

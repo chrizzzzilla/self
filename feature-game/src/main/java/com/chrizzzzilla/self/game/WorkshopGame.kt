@@ -238,7 +238,7 @@ internal fun WorkshopGame(onExit: () -> Unit) {
                         dayOver -> say("Feierabend – morgen geht es weiter.")
                         locked -> say("Dafür brauchst du: ${n.needs!!.label}")
                         left <= 0 -> say("${n.item.label}: für heute leer.")
-                        else -> target.value = n
+                        else -> { fig.x = n.x; fig.y = (n.y + 0.16f).coerceAtMost(0.95f); target.value = n }
                     }
                 }
             }
@@ -955,7 +955,7 @@ private fun DrawScope.drawLandscape(t: Float, day: Float, d: WorkshopData, fig: 
         val a = (0.12f + hash(k + 250) * 0.3f) * (0.6f + 0.4f * sin(t * 0.8f + k * 1.3f))
         drawCircle(Color(0xFFFFE2B0).copy(alpha = a), radius = (0.8f + hash(k + 300) * 1.6f) * density, center = Offset(px, py), blendMode = BlendMode.Plus)
     }
-    drawFigure(fig, t, evening)
+    // (keine Spielfigur mehr)
     if (evening > 0f) drawRect(Color(0xFF05050C).copy(alpha = 0.2f * evening))
 }
 

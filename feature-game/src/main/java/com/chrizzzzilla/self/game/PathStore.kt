@@ -102,9 +102,9 @@ internal class CalmAbilities(level: Int) {
 
     companion object {
         fun unlocked(level: Int): String = when {
-            level == 2 -> "Vorahnung – du spürst, wenn eine Welle oder Verlockung kommt."
-            level == 3 -> "Schild – ein Fehler pro Station wird von deiner Ruhe abgefangen."
-            level == 4 -> "Ruhiger Atem – der Takt verzeiht dir etwas mehr."
+            level == 2 -> "Vorahnung – du spürst, wenn eine Welle kommt."
+            level == 3 -> "Schild – eine Welle pro Station prallt an deiner Ruhe ab."
+            level == 4 -> "Ruhiger Atem – der Atemweg wird etwas breiter."
             level % 2 == 1 -> "Ein weiteres Schild – deine Ruhe trägt dich weiter."
             else -> "Deine Vorahnung reicht weiter."
         }
