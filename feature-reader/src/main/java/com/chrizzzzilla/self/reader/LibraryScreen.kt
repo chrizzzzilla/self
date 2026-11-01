@@ -152,6 +152,19 @@ fun LibraryScreen(
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
 
+            // Zuletzt gelesenes Buch oben mittig: antippen = direkt weiterlesen
+            val current = items.orEmpty().firstOrNull()
+            if (current != null && !libraryOpen) {
+                ContinueReading(
+                    item = current,
+                    compact = widthClass == WidthClass.COMPACT,
+                    onOpen = { runTask { Reader.open(context, current) } },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = if (widthClass == WidthClass.COMPACT) 36.dp else 56.dp),
+                )
+            }
+
             // Bibliotheks-Knopf unten rechts (Gegenstück zum Raster-Menü links)
             if (!libraryOpen && store == null && !chooser) {
                 LibraryButton(

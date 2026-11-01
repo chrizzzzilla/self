@@ -86,6 +86,8 @@ object FocusPlayer : FocusAudio {
                 _mix.value = saved
                 engine.setMix(saved)
             }
+            // Beim Oeffnen der App direkt mit der zuletzt verwendeten Mischung beginnen
+            autoStart()
             // Aenderungen gesammelt speichern
             _mix.drop(1).debounce(800).onEach { store.saveCurrent(it) }.launchIn(scope)
         }
