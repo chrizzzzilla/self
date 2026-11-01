@@ -42,6 +42,7 @@
     <string name="reader_toc">Inhaltsverzeichnis</string>
     <string name="reader_display">Darstellung</string>
     <string name="reader_music">Klang</string>
+    <string name="reader_ambient">Ambiente</string>
     <string name="reader_focus_mode">Fokusmodus</string>
     <string name="reader_back_to_book">Zum Buch</string>
     <string name="reader_focus_hint">Tippe auf das Bild, um die Bedienung ein- oder auszublenden.</string>

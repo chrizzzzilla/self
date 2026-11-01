@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
@@ -56,6 +57,8 @@ fun CityScene(
     pulse: () -> Float,
     level: () -> Float,
     modifier: Modifier = Modifier,
+    hour: () -> Float = { 22f },
+    season: Season = Season.SUMMER,
 ) {
     val time = remember { mutableFloatStateOf(0f) }
     val glow = remember { mutableFloatStateOf(0f) }
@@ -82,7 +85,7 @@ fun CityScene(
         modifier.drawWithCache {
             val scene = SceneCache.build(this, model)
             onDrawBehind {
-                drawFrame(scene, time.floatValue, glow.floatValue, sparkle.floatValue, rainAmount.floatValue)
+                drawFrame(scene, time.floatValue, glow.floatValue, sparkle.floatValue, rainAmount.floatValue, Daylight(hour(), season))
             }
         },
     )
@@ -774,7 +777,7 @@ private fun Color.toArgbInt(): Int {
 // Pro Frame
 // ==========================================================================================
 
-private fun DrawScope.drawFrame(s: SceneCache, t: Float, glow: Float, sparkle: Float, rain: Float) {
+private fun DrawScope.drawFrame(s: SceneCache, t: Float, glow: Float, sparkle: Float, rain: Float, light: Daylight) {
     val w = size.width
     val h = size.height
     val center = Offset(w / 2f, h * 0.6f)
@@ -787,16 +790,21 @@ private fun DrawScope.drawFrame(s: SceneCache, t: Float, glow: Float, sparkle: F
     // ---------- Himmel ----------
     translate(panX * 0.3f, panY * 0.3f) {
         scale(1f + (zoom - 1f) * 0.35f, pivot = center) {
-            drawImage(
-                s.sky,
-                srcOffset = IntOffset.Zero,
-                srcSize = IntSize(s.sky.width, s.sky.height),
-                dstOffset = IntOffset.Zero,
-                dstSize = IntSize(w.toInt(), h.toInt()),
-                filterQuality = FilterQuality.Low,
-            )
-            drawStars(s, t, sparkle)
-            drawShootingStar(s, t)
+            // Himmel nach Tageszeit; Nachthimmel (Milchstrasse, Sterne) blendet mit der Dunkelheit ein
+            drawRect(Brush.verticalGradient(listOf(light.skyTop, light.skyHorizon), startY = 0f, endY = s.horizonY))
+            if (light.stars > 0.02f) {
+                drawImage(
+                    s.sky,
+                    srcOffset = IntOffset.Zero,
+                    srcSize = IntSize(s.sky.width, s.sky.height),
+                    dstOffset = IntOffset.Zero,
+                    dstSize = IntSize(w.toInt(), h.toInt()),
+                    alpha = light.stars,
+                    filterQuality = FilterQuality.Low,
+                )
+                drawStars(s, t, sparkle, light.stars)
+                if (light.stars > 0.8f) drawShootingStar(s, t)
+            }
             drawClouds(s, t)
         }
     }
@@ -804,6 +812,8 @@ private fun DrawScope.drawFrame(s: SceneCache, t: Float, glow: Float, sparkle: F
     // ---------- Stadt ----------
     translate(panX, panY) {
         scale(zoom, pivot = center) {
+            // Tagsueber: Gebaeude aufhellen (Tageslicht), nachts wie gerendert
+            val dayAdd = lerp(Color.Black, Color(0xFF6C7890), light.day)
             drawImage(
                 s.city,
                 srcOffset = IntOffset.Zero,
@@ -811,11 +821,19 @@ private fun DrawScope.drawFrame(s: SceneCache, t: Float, glow: Float, sparkle: F
                 dstOffset = IntOffset.Zero,
                 dstSize = IntSize(s.city.width, s.city.height),
                 filterQuality = FilterQuality.Medium,
+                colorFilter = if (light.day > 0.02f) ColorFilter.lighting(Color.White, dayAdd) else null,
             )
-            drawFlicker(s, t)
+            if (light.night > 0.2f) drawFlicker(s, t)
             drawCars(s, t, rain)
-            // insgesamt etwas dunkler
-            drawRect(Color(0xFF02030A).copy(alpha = 0.22f))
+            // insgesamt etwas dunkler (nachts)
+            drawRect(Color(0xFF02030A).copy(alpha = 0.22f * light.night))
+            // Daemmerung: warmer Schimmer ueber der Stadt
+            if (light.twilight > 0.02f) {
+                drawRect(
+                    Brush.verticalGradient(listOf(light.sunColor.copy(alpha = 0.18f * light.twilight), Color.Transparent), startY = s.horizonY - h * 0.1f, endY = h),
+                    blendMode = BlendMode.Plus,
+                )
+            }
             // Musik: Stadtlicht atmet leicht im Beat
             if (glow > 0.01f) {
                 drawRect(
@@ -844,12 +862,12 @@ private fun DrawScope.drawFrame(s: SceneCache, t: Float, glow: Float, sparkle: F
     )
 }
 
-private fun DrawScope.drawStars(s: SceneCache, t: Float, sparkle: Float) {
+private fun DrawScope.drawStars(s: SceneCache, t: Float, sparkle: Float, visible: Float = 1f) {
     for (i in s.starX.indices) {
         // ruhiges, sanftes Funkeln – ohne Schein und ohne Kreuze
         val tw = 0.6f + 0.4f * sin(t * s.starSpeed[i] * 0.7f + s.starPhase[i])
         val a = (0.3f + 0.5f * tw + sparkle * 0.1f).coerceIn(0f, 0.9f)
-        drawCircle(Color(s.starTint[i]).copy(alpha = a), radius = s.starR[i] * 0.8f, center = Offset(s.starX[i], s.starY[i]))
+        drawCircle(Color(s.starTint[i]).copy(alpha = a * visible), radius = s.starR[i] * 0.8f, center = Offset(s.starX[i], s.starY[i]))
     }
 }
 

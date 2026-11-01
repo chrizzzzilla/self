@@ -17,6 +17,10 @@ internal class AmbientEngine(sampleRate: Int) {
 
     @Volatile var level = 0f; private set
     @Volatile var pulse = 0f; private set
+    /** Pegel je Ebene (fuer den Visualizer), 0..1 */
+    @Volatile var levelAmbience = 0f; private set
+    @Volatile var levelNature = 0f; private set
+    @Volatile var levelPercussion = 0f; private set
 
     // weich nachgefuehrte Lautstaerken (kein Knacken beim Ziehen am Regler)
     private var volA = 0f
@@ -41,6 +45,9 @@ internal class AmbientEngine(sampleRate: Int) {
         val smooth = 1f / (0.15f * d.sr)
         var sumSq = 0f
         var pulseMax = 0f
+        var sa = 0f
+        var sn = 0f
+        var sp = 0f
         for (i in 0 until frames) {
             volA += (m.ambienceVolume - volA) * smooth
             volN += (m.natureVolume - volN) * smooth
@@ -56,6 +63,10 @@ internal class AmbientEngine(sampleRate: Int) {
             val p2 = volP * volP * 1.4f
 
             reverb.process(ambience.send * a2 + nature.send * n2 + percussion.send * p2)
+            val av = (ambience.outL + ambience.outR) * 0.5f * a2
+            val nv = (nature.outL + nature.outR) * 0.5f * n2
+            val pv = (percussion.outL + percussion.outR) * 0.5f * p2
+            sa += av * av; sn += nv * nv; sp += pv * pv
 
             var l = ambience.outL * a2 + nature.outL * n2 + percussion.outL * p2 + reverb.outL
             var r = ambience.outR * a2 + nature.outR * n2 + percussion.outR * p2 + reverb.outR
@@ -69,6 +80,9 @@ internal class AmbientEngine(sampleRate: Int) {
             sumSq += (l * l + r * r) * 0.5f
         }
         level = sqrt(sumSq / frames).coerceIn(0f, 1f)
+        levelAmbience = (sqrt(sa / frames) * fade * 4f).coerceIn(0f, 1f)
+        levelNature = (sqrt(sn / frames) * fade * 4f).coerceIn(0f, 1f)
+        levelPercussion = (sqrt(sp / frames) * fade * 4f).coerceIn(0f, 1f)
         pulse = pulseMax.coerceIn(0f, 1f) * (volP * 1.5f).coerceAtMost(1f)
     }
 }

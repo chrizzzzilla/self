@@ -62,6 +62,9 @@ object FocusPlayer : FocusAudio {
     /** Fuer die Animation (0..1). */
     val level: Float get() = engine.level
     val pulse: Float get() = engine.pulse
+    val levelAmbience: Float get() = engine.levelAmbience
+    val levelNature: Float get() = engine.levelNature
+    val levelPercussion: Float get() = engine.levelPercussion
 
     private val audioAttributes = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_MEDIA)

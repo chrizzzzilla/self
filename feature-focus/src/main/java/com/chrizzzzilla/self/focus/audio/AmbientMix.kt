@@ -1,5 +1,7 @@
 package com.chrizzzzilla.self.focus.audio
 
+import com.chrizzzzilla.self.focus.scene.Scene
+import com.chrizzzzilla.self.focus.scene.Season
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -57,6 +59,13 @@ data class AmbientMix(
     val percussionTone: Float = 0.45f,
     /** 0 = dunkel … 1 = hell (Klangfarbe des Ambientes) */
     val ambienceTone: Float = 0.45f,
+    /** Bild hinter dem Buch / im Fokusmodus */
+    val scene: Scene = Scene.CITY,
+    val season: Season = Season.SUMMER,
+    /** Tageszeit 0..24 (stufenlos) */
+    val hour: Float = 22f,
+    /** true = Tageszeit folgt der echten Uhrzeit des Geraets */
+    val realTime: Boolean = false,
 ) {
     val percussionBpm: Float get() = 60f + percussionSpeed.coerceIn(0f, 1f) * 60f
 
@@ -70,6 +79,10 @@ data class AmbientMix(
         put("percussionVolume", percussionVolume.toDouble())
         put("percussionSpeed", percussionSpeed.toDouble())
         put("percussionTone", percussionTone.toDouble())
+        put("scene", scene.name)
+        put("season", season.name)
+        put("hour", hour.toDouble())
+        put("realTime", realTime)
     }.toString()
 
     companion object {
@@ -91,6 +104,10 @@ data class AmbientMix(
                 percussionVolume = o.optDouble("percussionVolume", d.percussionVolume.toDouble()).toFloat(),
                 percussionSpeed = o.optDouble("percussionSpeed", d.percussionSpeed.toDouble()).toFloat(),
                 percussionTone = o.optDouble("percussionTone", d.percussionTone.toDouble()).toFloat(),
+                scene = o.optString("scene").let { n -> Scene.entries.firstOrNull { it.name == n } } ?: d.scene,
+                season = o.optString("season").let { n -> Season.entries.firstOrNull { it.name == n } } ?: d.season,
+                hour = o.optDouble("hour", d.hour.toDouble()).toFloat(),
+                realTime = o.optBoolean("realTime", d.realTime),
             )
         }.getOrNull()
     }

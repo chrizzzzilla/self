@@ -10,13 +10,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.TextButton
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.chrizzzzilla.self.focus.AmbientControls
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
+import com.chrizzzzilla.self.core.design.ArtySwarm
+import com.chrizzzzilla.self.focus.AmbientPanelDialog
+import com.chrizzzzilla.self.focus.scene.AmbientScene
 import com.chrizzzzilla.self.focus.FocusPlayer
 import com.chrizzzzilla.self.focus.audio.NatureSound
-import com.chrizzzzilla.self.focus.scene.CityScene
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -82,6 +88,8 @@ internal fun ReaderTopChrome(
     AnimatedVisibility(visible = ui.chromeVisible.value, enter = fadeIn(), exit = fadeOut()) {
         Surface(
             color = MaterialTheme.colorScheme.surface.copy(alpha = CHROME_ALPHA),
+            // Farbe explizit, sonst bleiben die Symbole im Dunkel-Modus schwarz
+            contentColor = MaterialTheme.colorScheme.onSurface,
             tonalElevation = 2.dp,
             shadowElevation = 2.dp,
         ) {
@@ -89,38 +97,48 @@ internal fun ReaderTopChrome(
                 modifier = Modifier
                     .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.statusBars)
-                    .height(56.dp)
-                    .padding(horizontal = 4.dp),
+                    .height(60.dp)
+                    .padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onBack) {
-                    Icon(painterResource(R.drawable.reader_ic_back), stringResource(R.string.reader_back))
-                }
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 8.dp),
-                )
-                // Klang-Mixer (laeuft beim Lesen im Hintergrund weiter)
-                IconButton(onClick = { ui.showAmbient.value = true }) {
-                    Icon(
-                        painterResource(R.drawable.reader_ic_music),
-                        stringResource(R.string.reader_music),
-                        tint = if (playing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                // Ambiente: Klang + Bild (Arty)
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(30.dp))
+                        .clickable { ui.showAmbient.value = true }
+                        .padding(end = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(52.dp)) {
+                        ArtySwarm(Modifier.fillMaxSize(), particles = 220, pulse = { if (playing) FocusPlayer.pulse else 0f })
+                    }
+                    Text(
+                        stringResource(R.string.reader_ambient).uppercase(),
+                        style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 2.5.sp),
                     )
-                }
-                IconButton(onClick = onFocusMode) {
-                    Icon(painterResource(R.drawable.reader_ic_scene), stringResource(R.string.reader_focus_mode))
                 }
                 IconButton(onClick = { ui.showToc.value = true }) {
                     Icon(painterResource(R.drawable.reader_ic_toc), stringResource(R.string.reader_toc))
                 }
                 IconButton(onClick = { ui.showDisplaySettings.value = true }) {
                     Icon(painterResource(R.drawable.reader_ic_text), stringResource(R.string.reader_display))
+                }
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 8.dp),
+                )
+                IconButton(onClick = onBack) {
+                    Icon(
+                        painterResource(R.drawable.reader_ic_back),
+                        stringResource(R.string.reader_back),
+                        modifier = Modifier.graphicsLayer { rotationZ = 180f },
+                    )
                 }
             }
         }
@@ -148,9 +166,13 @@ internal fun ReaderTopChrome(
     }
 
     if (ui.showAmbient.value && !ui.focusMode.value) {
-        ModalBottomSheet(onDismissRequest = { ui.showAmbient.value = false }) {
-            AmbientControls()
-        }
+        AmbientPanelDialog(
+            onDismiss = { ui.showAmbient.value = false },
+            onFocusMode = {
+                ui.showAmbient.value = false
+                onFocusMode()
+            },
+        )
     }
 }
 
@@ -166,6 +188,7 @@ internal fun ReaderBottomChrome(ui: ReaderUiState, onSeek: (Double) -> Unit) {
 
         Surface(
             color = MaterialTheme.colorScheme.surface.copy(alpha = CHROME_ALPHA),
+            contentColor = MaterialTheme.colorScheme.onSurface,
             tonalElevation = 2.dp,
             shadowElevation = 2.dp,
         ) {
@@ -358,7 +381,8 @@ internal fun ReaderBackdrop(ui: ReaderUiState, onExitFocus: () -> Unit) {
     )
 
     Box(Modifier.fillMaxSize()) {
-        CityScene(
+        AmbientScene(
+            mix = mix,
             rain = NatureSound.RAIN in mix.nature && playing,
             pulse = { if (playing) FocusPlayer.pulse else 0f },
             level = { if (playing) FocusPlayer.level * 3f else 0f },
@@ -392,6 +416,7 @@ internal fun ReaderBackdrop(ui: ReaderUiState, onExitFocus: () -> Unit) {
             Surface(
                 shape = RoundedCornerShape(28.dp),
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                contentColor = MaterialTheme.colorScheme.onSurface,
                 tonalElevation = 3.dp,
             ) {
                 Row(
@@ -421,8 +446,6 @@ internal fun ReaderBackdrop(ui: ReaderUiState, onExitFocus: () -> Unit) {
 
     // Klang-Mixer im Fokusmodus (die obere Leiste ist dann ausgeblendet)
     if (focus && ui.showAmbient.value) {
-        ModalBottomSheet(onDismissRequest = { ui.showAmbient.value = false }) {
-            AmbientControls()
-        }
+        AmbientPanelDialog(onDismiss = { ui.showAmbient.value = false })
     }
 }
