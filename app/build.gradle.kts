@@ -20,7 +20,11 @@ val isDevChannel = System.getenv("SELF_CHANNEL") == "dev"
 
 android {
     namespace = "com.chrizzzzilla.self"
-    compileSdk = 37
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 2
+        }
+    }
 
     defaultConfig {
         applicationId = if (isDevChannel) "com.chrizzzzilla.self.dev" else "com.chrizzzzilla.self"
