@@ -41,7 +41,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.PathMeasure
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -62,9 +67,9 @@ import com.chrizzzzilla.self.reader.LibraryScreen
 import kotlin.math.sin
 
 /** Die Bereiche der App. Neue Bereiche = neuer Eintrag + Platz im Menue-Raster. */
-enum class Section(@StringRes val label: Int, @DrawableRes val icon: Int) {
-    READ(R.string.app_section_read, R.drawable.app_ic_read),
-    GAME(R.string.app_section_game, R.drawable.app_ic_game),
+enum class Section(@StringRes val label: Int) {
+    READ(R.string.app_section_read),  // „Soul“
+    GAME(R.string.app_section_game),  // „Path“
 }
 
 /**
@@ -191,7 +196,7 @@ private fun GridMenu(
                     if (target != null) {
                         MenuTile(
                             label = stringResource(target.label),
-                            icon = target.icon,
+                            section = target,
                             selected = target == current,
                             onClick = { onSelect(target) },
                         )
@@ -210,7 +215,7 @@ private fun GridMenu(
 }
 
 @Composable
-private fun MenuTile(label: String, @DrawableRes icon: Int, selected: Boolean, onClick: () -> Unit) {
+private fun MenuTile(label: String, section: Section, selected: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(20.dp)
     Column(
         Modifier
@@ -226,12 +231,7 @@ private fun MenuTile(label: String, @DrawableRes icon: Int, selected: Boolean, o
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(
-            painterResource(icon),
-            contentDescription = null,
-            tint = if (selected) AmbientColors.ArtyText else AmbientColors.Light.copy(alpha = 0.85f),
-            modifier = Modifier.size(26.dp),
-        )
+        SectionGlyph(section, selected, Modifier.size(34.dp))
         Spacer(Modifier.height(8.dp))
         Text(
             label.uppercase(),
@@ -306,6 +306,72 @@ private fun GridButton(buttonSize: Dp, grey: Float, onClick: () -> Unit) {
                         cornerRadius = CornerRadius(sq * 0.3f),
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Eigene, animierte Linien-Symbole im Stil der App:
+ *  Soul – eine Aura: feiner Ring, langsam kreisender Lichtbogen, atmender Kern.
+ *  Path – ein geschwungener Weg aus Schritten nach oben zu einem Stern; ein Lichtpunkt wandert ihn entlang.
+ */
+@Composable
+private fun SectionGlyph(section: Section, selected: Boolean, modifier: Modifier = Modifier) {
+    val time = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) {
+        val start = withFrameNanos { it }
+        while (true) withFrameNanos { time.floatValue = (it - start) / 1e9f }
+    }
+    val line = if (selected) AmbientColors.ArtyText else AmbientColors.Light.copy(alpha = 0.85f)
+    val accent = if (selected) AmbientColors.Arty else AmbientColors.Gold
+    Canvas(modifier) {
+        val t = time.floatValue
+        val w = size.width
+        val c = Offset(w / 2f, size.height / 2f)
+        val stroke = 1.3f * density
+        when (section) {
+            Section.READ -> {
+                // Aura
+                drawCircle(line.copy(alpha = 0.35f), radius = w * 0.44f, center = c, style = Stroke(stroke))
+                rotate(t * 40f, pivot = c) {
+                    drawArc(
+                        line, startAngle = -90f, sweepAngle = 110f, useCenter = false,
+                        topLeft = Offset(c.x - w * 0.44f, c.y - w * 0.44f), size = Size(w * 0.88f, w * 0.88f),
+                        style = Stroke(stroke * 1.4f, cap = StrokeCap.Round),
+                    )
+                }
+                drawCircle(line.copy(alpha = 0.5f), radius = w * 0.27f, center = c, style = Stroke(stroke * 0.8f))
+                val breathe = 0.75f + 0.25f * sin(t * 1.3f)
+                drawCircle(
+                    Brush.radialGradient(listOf(accent.copy(alpha = 0.9f * breathe), Color.Transparent), center = c, radius = w * 0.2f),
+                    radius = w * 0.2f, center = c,
+                )
+                drawCircle(line, radius = w * 0.055f * (0.9f + 0.2f * breathe), center = c)
+            }
+            Section.GAME -> {
+                // Weg von unten links nach oben rechts
+                val p = Path().apply {
+                    moveTo(w * 0.12f, size.height * 0.92f)
+                    cubicTo(w * 0.75f, size.height * 0.88f, w * 0.15f, size.height * 0.45f, w * 0.62f, size.height * 0.38f)
+                    cubicTo(w * 0.82f, size.height * 0.35f, w * 0.78f, size.height * 0.2f, w * 0.8f, size.height * 0.14f)
+                }
+                drawPath(
+                    p, line.copy(alpha = 0.9f),
+                    style = Stroke(stroke * 1.2f, cap = StrokeCap.Round, pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f * density, 3.5f * density))),
+                )
+                // Stern am Ziel
+                val star = Offset(w * 0.8f, size.height * 0.1f)
+                val sr = w * 0.09f * (0.85f + 0.15f * sin(t * 1.6f))
+                drawCircle(Brush.radialGradient(listOf(accent.copy(alpha = 0.8f), Color.Transparent), center = star, radius = sr * 2.4f), radius = sr * 2.4f, center = star)
+                drawLine(line, Offset(star.x - sr, star.y), Offset(star.x + sr, star.y), strokeWidth = stroke, cap = StrokeCap.Round)
+                drawLine(line, Offset(star.x, star.y - sr), Offset(star.x, star.y + sr), strokeWidth = stroke, cap = StrokeCap.Round)
+                // wandernder Lichtpunkt
+                val m = PathMeasure()
+                m.setPath(p, false)
+                val pos = m.getPosition(m.length * ((t * 0.18f) % 1f))
+                drawCircle(Brush.radialGradient(listOf(accent, Color.Transparent), center = pos, radius = w * 0.12f), radius = w * 0.12f, center = pos)
+                drawCircle(line, radius = w * 0.04f, center = pos)
             }
         }
     }
