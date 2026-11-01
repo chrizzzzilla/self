@@ -172,7 +172,7 @@ private class CityModel(val buildings: List<Building>, val streets: List<Street>
                                 buildings += Building(
                                     x0, z0, x1, z1, h,
                                     tone = rnd.nextFloat(),
-                                    litRate = 0.18f + rnd.nextFloat() * 0.4f,
+                                    litRate = 0.12f + rnd.nextFloat() * 0.3f,
                                     seed = rnd.nextInt(),
                                     neon = neon,
                                     beacon = h > 26f,
@@ -437,7 +437,7 @@ private class SceneCache(
                 sx[i] = rnd.nextFloat() * w
                 val v = rnd.nextFloat()
                 sy[i] = v * v * (horizon * 0.95f)
-                sr[i] = (0.5f + rnd.nextFloat().pow(3) * 2.2f) * scope.density
+                sr[i] = (0.45f + rnd.nextFloat().pow(3) * 1.1f) * scope.density
                 sp[i] = rnd.nextFloat() * 6.28f
                 ss[i] = 0.6f + rnd.nextFloat() * 2.4f
                 st[i] = when {
@@ -529,9 +529,9 @@ private fun drawHorizon(d: DrawScope, cam: Camera, horizon: Float, rnd: Random) 
     drawRect(
         Brush.verticalGradient(
             0f to Color.Transparent,
-            0.55f to Color(0x55B0577A),
-            0.8f to Color(0x88D9785A),
-            1f to Color(0x66FFB27A),
+            0.55f to Color(0x33B0577A),
+            0.8f to Color(0x55D9785A),
+            1f to Color(0x44FFB27A),
             startY = horizon - size.height * 0.16f,
             endY = horizon + 2f,
         ),
@@ -603,10 +603,10 @@ private fun drawStreets(d: DrawScope, cam: Camera, model: CityModel) = with(d) {
                         path.reset()
                         path.moveTo(a[0], a[1]); path.lineTo(b[0], b[1]); path.lineTo(c[0], c[1]); path.lineTo(e[0], e[1]); path.close()
                         if (pass == 0) {
-                            drawPath(path, (if (st.main) SODIUM else WARM2).copy(alpha = if (st.main) 0.16f else 0.08f), blendMode = BlendMode.Plus)
+                            drawPath(path, (if (st.main) SODIUM else WARM2).copy(alpha = if (st.main) 0.08f else 0.04f), blendMode = BlendMode.Plus)
                         } else {
                             drawPath(path, Color(0xFF1B1626))
-                            drawPath(path, SODIUM.copy(alpha = if (st.main) 0.22f else 0.12f), blendMode = BlendMode.Plus)
+                            drawPath(path, SODIUM.copy(alpha = if (st.main) 0.13f else 0.07f), blendMode = BlendMode.Plus)
                         }
                     }
                 }
@@ -617,8 +617,7 @@ private fun drawStreets(d: DrawScope, cam: Camera, model: CityModel) = with(d) {
                         st.point(ls, side * 1.0f, p)
                         if (cam.project(p[0], 0.6f, p[1], a) && a[2] < 170f) {
                             val r = (0.16f * cam.f / a[2]).coerceIn(0.6f, 3.5f)
-                            drawCircle(SODIUM.copy(alpha = 0.18f), radius = r * 5f, center = Offset(a[0], a[1]), blendMode = BlendMode.Plus)
-                            drawCircle(Color(0xFFFFE2B8), radius = r, center = Offset(a[0], a[1]))
+                            drawCircle(Color(0xFFFFD9A8).copy(alpha = 0.7f), radius = r * 0.8f, center = Offset(a[0], a[1]))
                         }
                     }
                     ls += 3.5f
@@ -710,11 +709,8 @@ private fun drawBuilding(
                     continue
                 }
                 if (isLit) {
-                    val a = 0.55f + 0.45f * hash01(b.seed + 5, fl * 3 + co)
+                    val a = 0.4f + 0.35f * hash01(b.seed + 5, fl * 3 + co)
                     drawRect(color.copy(alpha = a), topLeft = Offset(tmp[0] - ww / 2f, tmp[1] - wh / 2f), size = Size(ww, wh))
-                    if (ww > 3f) {
-                        drawCircle(color.copy(alpha = 0.08f), radius = ww * 1.6f, center = Offset(tmp[0], tmp[1]), blendMode = BlendMode.Plus)
-                    }
                 } else if (ww > 2.5f) {
                     drawRect(Color(0x1A3A4A7A), topLeft = Offset(tmp[0] - ww / 2f, tmp[1] - wh / 2f), size = Size(ww, wh))
                 }
@@ -742,8 +738,8 @@ private fun drawBuilding(
             val t0 = 0.3f; val t1 = 0.85f
             val ex = px(b0); val ey0 = py(b0) + (py(b1) - py(b0)) * t0; val ey1 = py(b0) + (py(b1) - py(b0)) * t1
             val strokeW = (0.25f * cam.f / depth).coerceIn(1f, 6f)
-            drawLine(neon.copy(alpha = 0.25f), Offset(ex, ey0), Offset(ex, ey1), strokeWidth = strokeW * 6f, cap = StrokeCap.Round, blendMode = BlendMode.Plus)
-            drawLine(neon.copy(alpha = 0.95f), Offset(ex, ey0), Offset(ex, ey1), strokeWidth = strokeW, cap = StrokeCap.Round)
+            drawLine(neon.copy(alpha = 0.12f), Offset(ex, ey0), Offset(ex, ey1), strokeWidth = strokeW * 4f, cap = StrokeCap.Round, blendMode = BlendMode.Plus)
+            drawLine(neon.copy(alpha = 0.7f), Offset(ex, ey0), Offset(ex, ey1), strokeWidth = strokeW, cap = StrokeCap.Round)
         }
     }
 
@@ -818,7 +814,8 @@ private fun DrawScope.drawFrame(s: SceneCache, t: Float, glow: Float, sparkle: F
             )
             drawFlicker(s, t)
             drawCars(s, t, rain)
-            drawBeacons(s, t)
+            // insgesamt etwas dunkler
+            drawRect(Color(0xFF02030A).copy(alpha = 0.22f))
             // Musik: Stadtlicht atmet leicht im Beat
             if (glow > 0.01f) {
                 drawRect(
@@ -849,27 +846,15 @@ private fun DrawScope.drawFrame(s: SceneCache, t: Float, glow: Float, sparkle: F
 
 private fun DrawScope.drawStars(s: SceneCache, t: Float, sparkle: Float) {
     for (i in s.starX.indices) {
-        val tw = 0.55f + 0.45f * sin(t * s.starSpeed[i] + s.starPhase[i])
-        // ab und zu ein kurzes, helles Aufblitzen
-        val flash = sin(t * 0.37f * s.starSpeed[i] + s.starPhase[i] * 3f).coerceAtLeast(0f).pow(40)
-        val a = (0.35f + 0.6f * tw + flash * 0.8f + sparkle * 0.3f).coerceIn(0f, 1f)
-        val col = Color(s.starTint[i]).copy(alpha = a)
-        val r = s.starR[i] * (1f + flash * 0.8f)
-        val c = Offset(s.starX[i], s.starY[i])
-        if (s.starR[i] > 1.6f * density || flash > 0.2f) {
-            drawCircle(col.copy(alpha = a * 0.25f), radius = r * 4f, center = c, blendMode = BlendMode.Plus)
-            // Glitzer-Kreuz
-            val len = r * (5f + flash * 14f)
-            val ca = col.copy(alpha = (a * 0.5f + flash * 0.5f).coerceIn(0f, 1f))
-            drawLine(ca, Offset(c.x - len, c.y), Offset(c.x + len, c.y), strokeWidth = 0.8f * density, blendMode = BlendMode.Plus)
-            drawLine(ca, Offset(c.x, c.y - len), Offset(c.x, c.y + len), strokeWidth = 0.8f * density, blendMode = BlendMode.Plus)
-        }
-        drawCircle(col, radius = r, center = c)
+        // ruhiges, sanftes Funkeln – ohne Schein und ohne Kreuze
+        val tw = 0.6f + 0.4f * sin(t * s.starSpeed[i] * 0.7f + s.starPhase[i])
+        val a = (0.3f + 0.5f * tw + sparkle * 0.1f).coerceIn(0f, 0.9f)
+        drawCircle(Color(s.starTint[i]).copy(alpha = a), radius = s.starR[i] * 0.8f, center = Offset(s.starX[i], s.starY[i]))
     }
 }
 
 private fun DrawScope.drawShootingStar(s: SceneCache, t: Float) {
-    val period = 23f
+    val period = 55f
     val slot = floor(t / period).toInt()
     val local = t - slot * period
     val start = 3f + hash01(slot, 1) * 12f
@@ -885,10 +870,9 @@ private fun DrawScope.drawShootingStar(s: SceneCache, t: Float) {
     val tail = Offset(x0 + dx * (p - 0.25f).coerceAtLeast(0f), y0 + dy * (p - 0.25f).coerceAtLeast(0f))
     val alpha = sin(p * PI.toFloat())
     drawLine(
-        Brush.linearGradient(listOf(Color.Transparent, Color.White.copy(alpha = alpha)), start = tail, end = head),
-        tail, head, strokeWidth = 1.6f * density, cap = StrokeCap.Round,
+        Brush.linearGradient(listOf(Color.Transparent, Color.White.copy(alpha = alpha * 0.7f)), start = tail, end = head),
+        tail, head, strokeWidth = 1.2f * density, cap = StrokeCap.Round,
     )
-    drawCircle(Color.White.copy(alpha = alpha * 0.4f), radius = 4f * density, center = head, blendMode = BlendMode.Plus)
 }
 
 private fun DrawScope.drawClouds(s: SceneCache, t: Float) {
@@ -921,7 +905,7 @@ private fun DrawScope.drawFlicker(s: SceneCache, t: Float) {
             val n = 0.55f + 0.25f * sin(t * 7.3f + i) + 0.2f * sin(t * 13.1f + i * 2.3f)
             val tvCol = lerp(Color(0xFF7FA4FF), Color(0xFFBFD4FF), (sin(t * 3.1f + i) + 1f) / 2f)
             if (hash01(s.flickSeed[i], (t / 20f).toInt()) < 0.6f) {
-                drawRect(tvCol.copy(alpha = n.coerceIn(0f, 1f)), topLeft = Offset(s.flickX[i], s.flickY[i]), size = Size(s.flickW[i], s.flickH[i]))
+                drawRect(tvCol.copy(alpha = (n * 0.6f).coerceIn(0f, 1f)), topLeft = Offset(s.flickX[i], s.flickY[i]), size = Size(s.flickW[i], s.flickH[i]))
             }
             continue
         }
@@ -929,11 +913,7 @@ private fun DrawScope.drawFlicker(s: SceneCache, t: Float) {
         val slot = floor((t + hash01(s.flickSeed[i], 1) * period) / period).toInt()
         val on = hash01(s.flickSeed[i], slot) < 0.55f
         if (on) {
-            drawRect(col.copy(alpha = 0.9f), topLeft = Offset(s.flickX[i], s.flickY[i]), size = Size(s.flickW[i], s.flickH[i]))
-            drawCircle(
-                col.copy(alpha = 0.1f), radius = s.flickW[i] * 1.8f,
-                center = Offset(s.flickX[i] + s.flickW[i] / 2f, s.flickY[i] + s.flickH[i] / 2f), blendMode = BlendMode.Plus,
-            )
+            drawRect(col.copy(alpha = 0.6f), topLeft = Offset(s.flickX[i], s.flickY[i]), size = Size(s.flickW[i], s.flickH[i]))
         }
     }
 }
@@ -956,7 +936,7 @@ private fun DrawScope.drawCars(s: SceneCache, t: Float, rain: Float) {
         val r = (0.16f * s.camera.f / out[2]).coerceIn(0.6f, 3.2f)
         val col = if (car.head) HEAD else TAIL
         val c = Offset(out[0], out[1])
-        drawCircle(col.copy(alpha = 0.28f), radius = r * 4.5f, center = c, blendMode = BlendMode.Plus)
+        drawCircle(col.copy(alpha = 0.12f), radius = r * 2.2f, center = c, blendMode = BlendMode.Plus)
         drawCircle(col, radius = r, center = c)
         // Spiegelung auf nasser Strasse
         if (rain > 0.05f || car.head) {
@@ -964,19 +944,6 @@ private fun DrawScope.drawCars(s: SceneCache, t: Float, rain: Float) {
                 col.copy(alpha = 0.18f * (0.4f + rain)), c, Offset(c.x, c.y + r * 7f),
                 strokeWidth = r * 1.2f, cap = StrokeCap.Round, blendMode = BlendMode.Plus,
             )
-        }
-    }
-}
-
-private fun DrawScope.drawBeacons(s: SceneCache, t: Float) {
-    for (i in s.beaconX.indices) {
-        // kurzes Aufleuchten etwa alle 1,8 s, je Turm versetzt
-        val ph = ((t + s.beaconPhase[i]) % 1.8f) / 1.8f
-        val on = if (ph < 0.12f) sin(ph / 0.12f * PI.toFloat()) else 0f
-        val c = Offset(s.beaconX[i], s.beaconY[i])
-        drawCircle(Color(0xFFFF2020).copy(alpha = 0.35f + 0.65f * on), radius = s.beaconR[i], center = c)
-        if (on > 0.01f) {
-            drawCircle(Color(0xFFFF3030).copy(alpha = 0.45f * on), radius = s.beaconR[i] * 7f, center = c, blendMode = BlendMode.Plus)
         }
     }
 }
