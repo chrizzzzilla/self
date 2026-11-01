@@ -972,7 +972,7 @@ internal class FigureState {
 internal class Flyer(val item: Item, val x: Float, val y: Float, val t0: Float)
 
 /** Spielfigur als Silhouette mit Arty-blauer Lichtkante und kleiner Laterne. */
-private fun DrawScope.drawFigure(f: FigureState, t: Float, evening: Float) {
+internal fun DrawScope.drawFigure(f: FigureState, t: Float, evening: Float) {
     val x = f.x * size.width
     val y = f.y * size.height
     val s = size.height * (0.10f + 0.06f * f.y)

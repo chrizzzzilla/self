@@ -82,9 +82,13 @@ fun GameScreen(modifier: Modifier = Modifier, onOverlayChanged: (Boolean) -> Uni
     val workshopStore = remember { WorkshopStore(context) }
     var workshopInfo by remember { mutableStateOf(0f to 0) }
     LaunchedEffect(workshop) { if (!workshop) workshopInfo = workshopStore.summary() }
+    var garden by remember { mutableStateOf(false) }
+    val gardenStore = remember { GardenStore(context) }
+    var gardenInfo by remember { mutableStateOf(0f to 0) }
+    LaunchedEffect(garden) { if (!garden) gardenInfo = gardenStore.summary() }
     var levelUp by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(playing, workshop) { onOverlayChanged(playing || workshop) }
+    LaunchedEffect(playing, workshop, garden) { onOverlayChanged(playing || workshop || garden) }
 
     BoxWithConstraints(modifier.fillMaxSize()) {
         val compact = maxWidth < 600.dp
@@ -123,8 +127,11 @@ fun GameScreen(modifier: Modifier = Modifier, onOverlayChanged: (Boolean) -> Uni
                             done = secs >= DAILY_SECONDS, index = i, onOpen = { workshop = true },
                         )
                     } else {
-                        // Demut folgt
-                        TrainingTile(game = g, size = small, level = 1, fill = 0f, done = false, index = i, onOpen = {})
+                        val (gSecs, gScore) = gardenInfo
+                        TrainingTile(
+                            game = g, size = small, level = 1 + gScore / 4, fill = (gScore % 4) / 4f,
+                            done = gSecs >= GARDEN_SECONDS, index = i, onOpen = { garden = true },
+                        )
                     }
                 }
             }
@@ -153,6 +160,7 @@ fun GameScreen(modifier: Modifier = Modifier, onOverlayChanged: (Boolean) -> Uni
     }
 
     if (workshop) WorkshopGame(onExit = { workshop = false })
+    if (garden) GardenGame(onExit = { garden = false })
 }
 
 @Composable
