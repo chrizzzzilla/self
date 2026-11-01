@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="focus_title">Fokus</string>
-    <string name="focus_placeholder">Hier entsteht der Fokus-Bereich: generative Musik direkt auf dem Gerät, ruhige animierte Hintergründe, Fokus- und Sleep-Timer.</string>
-    <string name="focus_soon">Kommt in einer späteren Version.</string>
+    <string name="focus_play">Abspielen</string>
+    <string name="focus_pause">Pause</string>
+    <string name="focus_energy">Stimmung</string>
+    <string name="focus_energy_low">ruhig</string>
+    <string name="focus_energy_high">aktiv</string>
+    <string name="focus_brightness">Klang</string>
+    <string name="focus_brightness_low">dunkel</string>
+    <string name="focus_brightness_high">hell</string>
+    <string name="focus_tempo">Tempo</string>
+    <string name="focus_tempo_value">%1$d BPM</string>
+    <string name="focus_rain">Regen</string>
+    <string name="focus_hint">Tippe auf das Bild, um die Regler ein- oder auszublenden.</string>
 </resources>
