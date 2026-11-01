@@ -1,5 +1,11 @@
 # Self — Session-Memory (neueste oben)
 
+## 2026-11-01 — Session 1f: Bibliothek-Fenster, CBZ, echte Naturaufnahmen (bis 0.1.18) [Rechner: Office]
+- Naturgeräusche = echte CC0-Aufnahmen (BigSoundBank, assets/nature, QUELLEN.txt), Loop mit 2-s-Überblendung, SampleDecoder (MediaCodec).
+- Chris: keine Menschen/Tiere in Szenen, nur laues Lüftchen, kein Play-Knopf (hörbar = spielt), keine Emojis an Reglern (TextSlider mit Schrift im Balken).
+- Soul: Arty-Sonne + Bibliotheks-Knopf unten rechts → LibraryPanel (Suche, Genre, +, lange drücken = löschen). DB v2 (genre). CBZ via ImageNavigatorFragment.
+- Offen: PDF (Pdfium-Adapter), Foreground-Service, Path-Spiele, Feedback zu Aufnahmen/Szenen.
+
 ## 2026-11-01 — Session 1e: Soul/Path, Quellen, Ambiente-Panel (bis 0.1.15) [Rechner: Office]
 - Menü: Raster-Knopf unten links → Soul (Lesen) / Path (Spiel), animierte Glyphen. Arty = aufgehende Sonne unten.
 - Buch-Quellen im eingebauten Browser (StoreBrowser.kt, INTERNET): Tolino-Webreader, Beam, Libreture, Gutenberg, Standard Ebooks, J-Novel Club, Humble; EPUB-Download wird direkt importiert.
