@@ -323,8 +323,17 @@ private fun NoticeAction(label: String, onClick: () -> Unit) {
     )
 }
 
+/** Im externen Browser oeffnen – bevorzugt Firefox (der Tolino-Webreader laeuft dort, in Chrome-Varianten oft nicht). */
 private fun openExternal(context: Context, url: String) {
-    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+    val uri = Uri.parse(url)
+    val firefox = listOf("org.mozilla.firefox", "org.mozilla.fenix", "org.mozilla.firefox_beta", "org.mozilla.fennec_fdroid", "org.mozilla.focus")
+    for (pkg in firefox) {
+        val ok = runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, uri).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.isSuccess
+        if (ok) return
+    }
+    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
 }
 
 /** JavaScript: blob-URL in der Seite lesen und als Base64 an Self geben. */
