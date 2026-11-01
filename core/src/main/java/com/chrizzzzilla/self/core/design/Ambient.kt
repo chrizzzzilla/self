@@ -173,13 +173,13 @@ private fun rememberSprites(color: Color): SpriteSet {
 }
 
 /** Zeichnet einen Leuchtpunkt mit Mittelpunkt [x],[y] und Radius [r] (Schein reicht bis 2r). */
-private fun DrawScope.glow(sprites: SpriteSet, x: Float, y: Float, r: Float, alpha: Float) {
+private fun DrawScope.glow(sprites: SpriteSet, x: Float, y: Float, r: Float, alpha: Float, blend: BlendMode = BlendMode.Plus) {
     if (alpha < 0.012f) return
     val dia = r * 4f
     val img = sprites.images[sprites.index(dia)]
     val scale = dia / img.width
     if (abs(scale - 1f) < 0.12f) {
-        drawImage(img, topLeft = Offset(x - img.width / 2f, y - img.height / 2f), alpha = alpha.coerceAtMost(1f), blendMode = BlendMode.Plus)
+        drawImage(img, topLeft = Offset(x - img.width / 2f, y - img.height / 2f), alpha = alpha.coerceAtMost(1f), blendMode = blend)
     } else {
         // selten: zwischen zwei Groessen → leicht skaliert zeichnen
         val w = img.width * scale
@@ -188,7 +188,7 @@ private fun DrawScope.glow(sprites: SpriteSet, x: Float, y: Float, r: Float, alp
             dstOffset = androidx.compose.ui.unit.IntOffset((x - w / 2f).toInt(), (y - w / 2f).toInt()),
             dstSize = androidx.compose.ui.unit.IntSize(w.toInt().coerceAtLeast(1), w.toInt().coerceAtLeast(1)),
             alpha = alpha.coerceAtMost(1f),
-            blendMode = BlendMode.Plus,
+            blendMode = blend,
         )
     }
 }
@@ -338,10 +338,13 @@ fun ArtySwarm(
     modifier: Modifier = Modifier,
     particles: Int = 900,
     pulse: () -> Float = { 0f },
+    /** true auf hellem Grund (Hell/Sepia): kraeftiges Blau, normal gemischt statt additiv. */
+    onLight: Boolean = false,
 ) {
     val time = rememberClock()
-    val blue = rememberSprites(AmbientColors.Arty)
-    val white = rememberSprites(AmbientColors.Light)
+    val blue = rememberSprites(if (onLight) Color(0xFF2F55C8) else AmbientColors.Arty)
+    val white = rememberSprites(if (onLight) Color(0xFF1E3A9A) else AmbientColors.Light)
+    val blend = if (onLight) BlendMode.SrcOver else BlendMode.Plus
     val swarm = remember(particles) { makeSwarm(particles, 150f, 11) }
     val appear = remember { Animatable(0f) }
     LaunchedEffect(Unit) { appear.animateTo(1f, tween(3600)) }
@@ -381,7 +384,7 @@ fun ArtySwarm(
             val a = 0.62f * swarm.hell[i] * min(1f, q * 2f) * front * (1f + pl * 0.6f)
             val r = max(1.1f, 2.3f * out[2])
             val sprites = if (swarm.hell[i] > 0.9f) white else blue
-            glow(sprites, x, y, r, a)
+            glow(sprites, x, y, r, a, blend)
             // Leuchtspur bei schneller Bewegung (beim Erscheinen)
             val px = swarm.vx[i]
             if (!px.isNaN()) {

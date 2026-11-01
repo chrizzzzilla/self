@@ -32,11 +32,20 @@ import kotlin.random.Random
  * Licht kommt aus [Daylight] (Uhrzeit + Jahreszeit), Wind blaest in Boeen, ab und zu passiert etwas.
  */
 @Composable
-internal fun LandscapeScene(scene: Scene, hour: () -> Float, season: Season, rain: Boolean, modifier: Modifier = Modifier) {
-    val time = remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(Unit) {
-        val start = withFrameNanos { it }
-        while (true) withFrameNanos { time.floatValue = (it - start) / 1e9f }
+internal fun LandscapeScene(
+    scene: Scene,
+    hour: () -> Float,
+    season: Season,
+    rain: Boolean,
+    modifier: Modifier = Modifier,
+    animate: Boolean = true,
+) {
+    val time = remember { mutableFloatStateOf(7f) }
+    if (animate) {
+        LaunchedEffect(Unit) {
+            val start = withFrameNanos { it } - (time.floatValue * 1e9f).toLong()
+            while (true) withFrameNanos { time.floatValue = (it - start) / 1e9f }
+        }
     }
     val sky = remember(scene) { SkyLayer(scene.ordinal * 17 + 3) }
     val flakes = remember { Particles(140, 9) }
@@ -67,14 +76,12 @@ internal fun LandscapeScene(scene: Scene, hour: () -> Float, season: Season, rai
 
 /** Grundbewegung + gelegentliche Boeen (0..1). */
 internal class Wind(t: Float) {
-    val gust: Float = run {
-        val g = sin(t * 0.11f + sin(t * 0.043f) * 2.2f)
-        smooth(0.55f, 1f, g).pow(1.5f)
-    }
-    val sway: Float = sin(t * 0.7f) * 0.25f + sin(t * 1.9f) * 0.08f
-    /** Neigung fuer Halme/Wipfel, abhaengig von der Position x (Wellen laufen durch). */
+    /** sehr sanftes An- und Abschwellen (laues Lueftchen, keine Boeen) */
+    val gust: Float = (0.5f + 0.5f * sin(t * 0.07f + sin(t * 0.031f) * 1.5f)) * 0.35f
+    val sway: Float = sin(t * 0.5f) * 0.12f
+    /** Neigung fuer Halme/Wipfel, abhaengig von der Position x (sanfte Wellen laufen durch). */
     fun bend(x: Float, t: Float, strength: Float): Float =
-        (sway * 0.3f + sin(x * 0.012f - t * 1.6f) * (0.15f + gust * 0.6f) + gust * 0.5f) * strength
+        (sway * 0.25f + sin(x * 0.01f - t * 0.9f) * (0.06f + gust * 0.1f) + gust * 0.08f) * strength
 }
 
 internal class Particles(n: Int, seed: Int) {
@@ -172,32 +179,12 @@ private fun DrawScope.drawMountain(t: Float, L: Daylight, season: Season, sky: S
     drawLine(ink, Offset(topX - frameH * 0.38f, baseY + 2f), apex, strokeWidth = 4f * density, cap = StrokeCap.Round)
     drawLine(ink, Offset(topX + frameH * 0.38f, baseY + 2f), apex, strokeWidth = 4f * density, cap = StrokeCap.Round)
     drawCircle(ink, radius = 3.5f * density, center = apex)
-    val swing = 0.26f * sin(t * 1.05f) + wind.gust * 0.04f * sin(t * 2.1f)
+    val swing = 0.06f * sin(t * 0.9f)
     val rope = frameH * 0.82f
     val seat = Offset(apex.x + sin(swing) * rope, apex.y + cos(swing) * rope)
     drawLine(ink.copy(alpha = 0.9f), apex, seat, strokeWidth = 1.4f * density)
-    // Figur: sitzt, schaut nach links (zur Morgensonne)
-    rotate(-swing * 180f / PI.toFloat() * 0.6f, pivot = seat) {
-        val s = frameH * 0.30f
-        // Sitzbrett
-        drawLine(ink, Offset(seat.x - s * 0.22f, seat.y), Offset(seat.x + s * 0.22f, seat.y), strokeWidth = 3f * density, cap = StrokeCap.Round)
-        // Oberkoerper (leicht nach hinten gelehnt)
-        val hip = Offset(seat.x + s * 0.05f, seat.y - s * 0.06f)
-        val shoulder = Offset(hip.x + s * 0.08f, hip.y - s * 0.62f)
-        drawLine(ink, hip, shoulder, strokeWidth = s * 0.28f, cap = StrokeCap.Round)
-        // Kopf
-        drawCircle(ink, radius = s * 0.17f, center = Offset(shoulder.x - s * 0.04f, shoulder.y - s * 0.24f))
-        // Arm zum Seil
-        drawLine(ink, Offset(shoulder.x, shoulder.y + s * 0.05f), Offset(seat.x + s * 0.02f, seat.y - s * 0.5f), strokeWidth = s * 0.09f, cap = StrokeCap.Round)
-        // Beine nach vorne (links), Unterschenkel baumeln mit
-        val knee = Offset(hip.x - s * 0.42f, hip.y + s * 0.02f)
-        val legSwing = sin(t * 1.05f + 0.6f) * 0.25f
-        val foot = Offset(knee.x - sin(legSwing) * s * 0.4f, knee.y + cos(legSwing) * s * 0.42f)
-        drawLine(ink, hip, knee, strokeWidth = s * 0.14f, cap = StrokeCap.Round)
-        drawLine(ink, knee, foot, strokeWidth = s * 0.12f, cap = StrokeCap.Round)
-    }
-
-    drawBirds(t, L, horizon)
+    // leeres Sitzbrett
+    drawLine(ink, Offset(seat.x - frameH * 0.07f, seat.y), Offset(seat.x + frameH * 0.07f, seat.y), strokeWidth = 3f * density, cap = StrokeCap.Round)
 }
 
 // ==========================================================================================
@@ -286,43 +273,6 @@ private fun DrawScope.drawForest(t: Float, L: Daylight, season: Season, sky: Sky
         }
     }
 
-    // Eule auf einem Ast rechts
-    val ink = L.tint(Color(0xFF2A221C), 0f)
-    val branchY = h * 0.42f
-    drawLine(ink, Offset(w * 0.86f, branchY), Offset(w, branchY - h * 0.03f), strokeWidth = 6f * density, cap = StrokeCap.Round)
-    val owl = Offset(w * 0.9f, branchY - h * 0.035f)
-    val os = h * 0.045f
-    drawOval(ink, topLeft = Offset(owl.x - os * 0.55f, owl.y - os * 1.1f), size = Size(os * 1.1f, os * 1.3f))
-    drawCircle(ink, radius = os * 0.48f, center = Offset(owl.x, owl.y - os * 1.15f))
-    // Federohren
-    drawLine(ink, Offset(owl.x - os * 0.3f, owl.y - os * 1.45f), Offset(owl.x - os * 0.42f, owl.y - os * 1.75f), strokeWidth = os * 0.16f, cap = StrokeCap.Round)
-    drawLine(ink, Offset(owl.x + os * 0.3f, owl.y - os * 1.45f), Offset(owl.x + os * 0.42f, owl.y - os * 1.75f), strokeWidth = os * 0.16f, cap = StrokeCap.Round)
-    // Augen: leuchten nachts, blinzeln, schauen ab und zu zur Seite
-    val blink = (t % 5.3f) < 0.16f
-    val look = sin(floor(t / 9f) * 2.3f) * os * 0.1f
-    if (!blink) {
-        val eyeCol = lerp(Color(0xFFC79A3C), Color(0xFFFFC34A), L.night)
-        for (side in intArrayOf(-1, 1)) {
-            val e = Offset(owl.x + side * os * 0.2f + look, owl.y - os * 1.15f)
-            if (L.night > 0.3f) {
-                drawCircle(eyeCol.copy(alpha = 0.35f * L.night), radius = os * 0.25f, center = e, blendMode = BlendMode.Plus)
-            }
-            drawCircle(eyeCol, radius = os * 0.1f, center = e)
-        }
-    }
-
-    // Fuchs: alle ~28 s laeuft er ueber den Waldboden
-    val cycle = 28f
-    val n = floor(t / cycle).toInt()
-    val local = t - n * cycle
-    if (local < 10f) {
-        val p = local / 10f
-        val dir = if (n % 2 == 0) 1f else -1f
-        val fx = if (dir > 0) -w * 0.1f + p * w * 1.2f else w * 1.1f - p * w * 1.2f
-        val fy = h * 0.9f
-        drawFox(Offset(fx, fy), h * 0.06f, dir, local, L)
-    }
-
     // Gluehwuermchen nachts / Staub im Licht tagsueber
     val r = Random(77)
     for (i in 0 until 46) {
@@ -336,43 +286,6 @@ private fun DrawScope.drawForest(t: Float, L: Daylight, season: Season, sky: Sky
     }
 }
 
-private fun DrawScope.drawFox(pos: Offset, s: Float, dir: Float, t: Float, L: Daylight) {
-    val body = L.tint(Color(0xFFC4652C), 0.05f)
-    val dark = L.tint(Color(0xFF3A2418), 0.05f)
-    val gait = t * 9f
-    // Beine
-    for (k in 0 until 4) {
-        val lx = pos.x + dir * s * (-0.55f + (k / 2) * 1.0f) + (k % 2) * dir * s * 0.12f
-        val swing = sin(gait + k * PI.toFloat() * 0.5f) * s * 0.18f
-        drawLine(dark, Offset(lx, pos.y - s * 0.35f), Offset(lx + dir * swing, pos.y), strokeWidth = s * 0.1f, cap = StrokeCap.Round)
-    }
-    // Koerper
-    drawOval(body, topLeft = Offset(pos.x - s * 0.75f, pos.y - s * 0.72f), size = Size(s * 1.5f, s * 0.5f))
-    // Schwanz (buschig, wippt)
-    val tailBase = Offset(pos.x - dir * s * 0.7f, pos.y - s * 0.55f)
-    val tailTip = Offset(tailBase.x - dir * s * 0.8f, tailBase.y + s * 0.1f + sin(gait * 0.5f) * s * 0.06f)
-    drawLine(body, tailBase, tailTip, strokeWidth = s * 0.32f, cap = StrokeCap.Round)
-    drawCircle(Color(0xFFF2E6D8).copy(alpha = 0.9f * (0.3f + 0.7f * L.day)), radius = s * 0.1f, center = tailTip)
-    // Kopf + Ohren + Schnauze
-    val head = Offset(pos.x + dir * s * 0.82f, pos.y - s * 0.78f + sin(gait) * s * 0.02f)
-    drawCircle(body, radius = s * 0.22f, center = head)
-    val snout = Path().apply {
-        moveTo(head.x + dir * s * 0.12f, head.y - s * 0.08f)
-        lineTo(head.x + dir * s * 0.45f, head.y + s * 0.06f)
-        lineTo(head.x + dir * s * 0.08f, head.y + s * 0.14f)
-        close()
-    }
-    drawPath(snout, body)
-    for (e in floatArrayOf(-0.08f, 0.1f)) {
-        val ear = Path().apply {
-            moveTo(head.x + dir * s * e - s * 0.08f, head.y - s * 0.12f)
-            lineTo(head.x + dir * s * e, head.y - s * 0.42f)
-            lineTo(head.x + dir * s * e + s * 0.08f, head.y - s * 0.12f)
-            close()
-        }
-        drawPath(ear, dark)
-    }
-}
 
 // ==========================================================================================
 // Weizenfeld mit Weg
@@ -432,7 +345,7 @@ private fun DrawScope.drawField(t: Float, L: Daylight, season: Season, sky: SkyL
             path.lineTo(xx, y + sin(xx * 0.008f - t * 1.4f + k) * (2f + k * 1.2f) * density)
             xx += w / 80f
         }
-        val a = (0.07f + wind.gust * 0.12f) * (0.4f + 0.6f * L.day)
+        val a = (0.06f + wind.gust * 0.05f) * (0.4f + 0.6f * L.day)
         drawPath(path, waveCol.copy(alpha = a), style = Stroke(width = (1f + k * 0.9f) * density))
     }
     // vordere Halme einzeln (mit Aehren)
@@ -449,11 +362,10 @@ private fun DrawScope.drawField(t: Float, L: Daylight, season: Season, sky: SkyL
                 val tip = Offset(sx + sin(a) * len, y - cos(a) * len)
                 drawLine(stalk, Offset(sx, y), tip, strokeWidth = 1.1f * density, cap = StrokeCap.Round)
                 if (season != Season.AUTUMN) {
-                    rotate(a * 180f / PI.toFloat(), pivot = tip) {
-                        drawOval(ear, topLeft = Offset(tip.x - 1.6f * density, tip.y - len * 0.22f), size = Size(3.2f * density, len * 0.24f))
-                    }
+                    val earBase = Offset(tip.x - sin(a) * len * 0.22f, tip.y + cos(a) * len * 0.22f)
+                    drawLine(ear, earBase, tip, strokeWidth = 3.2f * density, cap = StrokeCap.Round)
                 }
-                sx += (5f + rr.nextFloat() * 6f) * density
+                sx += (7f + rr.nextFloat() * 7f) * density
             }
         }
     }
@@ -467,98 +379,14 @@ private fun DrawScope.drawField(t: Float, L: Daylight, season: Season, sky: SkyL
     drawRect(track, topLeft = Offset(0f, roadTop + (roadBottom - roadTop) * 0.28f), size = Size(w, (roadBottom - roadTop) * 0.12f))
     drawRect(track, topLeft = Offset(0f, roadTop + (roadBottom - roadTop) * 0.62f), size = Size(w, (roadBottom - roadTop) * 0.12f))
 
-    // Reh: alle ~37 s tritt es aus dem Feld, quert den Weg und verschwindet
-    run {
-        val cycle = 37f
-        val n = floor((t + 12f) / cycle).toInt()
-        val local = t + 12f - n * cycle
-        if (local < 14f) {
-            val p = local / 14f
-            val startX = w * (0.2f + (n % 3) * 0.25f)
-            val dir = if (n % 2 == 0) 1f else -1f
-            val emerge = smooth(0f, 0.2f, p)
-            val px = startX + dir * p * w * 0.35f
-            val py = mixF(fieldBottom - h * 0.01f, roadBottom + h * 0.02f, smooth(0.15f, 0.9f, p))
-            drawDeer(Offset(px, py), h * 0.07f * (0.85f + 0.3f * smooth(0.15f, 1f, p)), dir, local, L, emerge)
-        }
-    }
-    // Spaziergaenger: alle ~45 s laeuft jemand den Weg entlang (nachts mit Laterne)
-    run {
-        val cycle = 45f
-        val n = floor(t / cycle).toInt()
-        val local = t - n * cycle
-        if (local < 18f) {
-            val p = local / 18f
-            val dir = if (n % 2 == 0) 1f else -1f
-            val px = if (dir > 0) -w * 0.05f + p * w * 1.1f else w * 1.05f - p * w * 1.1f
-            drawWalker(Offset(px, roadTop + (roadBottom - roadTop) * 0.55f), h * 0.12f, dir, local, L)
-        }
-    }
-
-    drawBirds(t, L, horizon)
 }
 
-private fun DrawScope.drawDeer(pos: Offset, s: Float, dir: Float, t: Float, L: Daylight, emerge: Float) {
-    val body = L.tint(Color(0xFF8E5B36), 0f).copy(alpha = emerge)
-    val gait = t * 4.2f
-    for (k in 0 until 4) {
-        val lx = pos.x + dir * s * (-0.5f + (k / 2) * 0.95f) + (k % 2) * dir * s * 0.1f
-        val swing = sin(gait + k * PI.toFloat() * 0.5f) * s * 0.14f
-        drawLine(body, Offset(lx, pos.y - s * 0.55f), Offset(lx + dir * swing, pos.y), strokeWidth = s * 0.07f, cap = StrokeCap.Round)
-    }
-    drawOval(body, topLeft = Offset(pos.x - s * 0.62f, pos.y - s * 0.95f), size = Size(s * 1.25f, s * 0.48f))
-    val neckBase = Offset(pos.x + dir * s * 0.45f, pos.y - s * 0.85f)
-    val head = Offset(neckBase.x + dir * s * 0.2f, neckBase.y - s * 0.55f + sin(gait * 0.5f) * s * 0.02f)
-    drawLine(body, neckBase, head, strokeWidth = s * 0.16f, cap = StrokeCap.Round)
-    drawOval(body, topLeft = Offset(head.x - s * 0.1f + dir * s * 0.05f, head.y - s * 0.09f), size = Size(s * 0.3f, s * 0.16f))
-    drawLine(body, head, Offset(head.x - dir * s * 0.08f, head.y - s * 0.18f), strokeWidth = s * 0.06f, cap = StrokeCap.Round)
-}
 
-private fun DrawScope.drawWalker(pos: Offset, s: Float, dir: Float, t: Float, L: Daylight) {
-    val ink = L.tint(Color(0xFF2B2622), 0f)
-    val gait = t * 5f
-    val hip = Offset(pos.x, pos.y - s * 0.45f)
-    for (k in 0 until 2) {
-        val a = sin(gait + k * PI.toFloat()) * 0.35f
-        drawLine(ink, hip, Offset(hip.x + sin(a) * s * 0.45f, hip.y + cos(a) * s * 0.45f), strokeWidth = s * 0.07f, cap = StrokeCap.Round)
-    }
-    val shoulder = Offset(hip.x + dir * s * 0.02f, hip.y - s * 0.36f)
-    drawLine(ink, hip, shoulder, strokeWidth = s * 0.13f, cap = StrokeCap.Round)
-    drawCircle(ink, radius = s * 0.075f, center = Offset(shoulder.x, shoulder.y - s * 0.12f))
-    val armA = sin(gait + PI.toFloat()) * 0.3f
-    val hand = Offset(shoulder.x + sin(armA) * s * 0.33f, shoulder.y + cos(armA) * s * 0.33f)
-    drawLine(ink, shoulder, hand, strokeWidth = s * 0.05f, cap = StrokeCap.Round)
-    // Laterne in der Dunkelheit
-    if (L.night > 0.5f) {
-        drawCircle(Color(0xFFFFC46A).copy(alpha = 0.35f * L.night), radius = s * 0.3f, center = hand, blendMode = BlendMode.Plus)
-        drawCircle(Color(0xFFFFD48A), radius = s * 0.035f, center = hand)
-    }
-}
 
 // ==========================================================================================
 // Gemeinsames: Voegel, Schnee, Laub, Regen
 // ==========================================================================================
 
-private fun DrawScope.drawBirds(t: Float, L: Daylight, horizon: Float) {
-    if (L.day < 0.2f) return
-    val cycle = 33f
-    val n = floor(t / cycle).toInt()
-    val local = t - n * cycle
-    if (local > 16f) return
-    val p = local / 16f
-    val w = size.width
-    val baseX = -w * 0.1f + p * w * 1.2f
-    val baseY = horizon * (0.25f + (n % 3) * 0.12f)
-    val ink = L.tint(Color(0xFF2A2A30), 0.3f)
-    for (k in 0 until 5) {
-        val bx = baseX - k * w * 0.018f
-        val by = baseY + abs(k - 2) * horizon * 0.02f
-        val flap = sin(t * 8f + k) * 4f * density
-        val sz = 6f * density
-        drawLine(ink, Offset(bx - sz, by - flap), Offset(bx, by), strokeWidth = 1.3f * density, cap = StrokeCap.Round)
-        drawLine(ink, Offset(bx, by), Offset(bx + sz, by - flap), strokeWidth = 1.3f * density, cap = StrokeCap.Round)
-    }
-}
 
 private fun DrawScope.drawSnow(pt: Particles, t: Float, wind: Wind, L: Daylight) {
     val w = size.width

@@ -28,6 +28,7 @@ fun AmbientScene(
     level: () -> Float,
     modifier: Modifier = Modifier,
     sceneOverride: Scene? = null,
+    animate: Boolean = true,
 ) {
     val clock = remember { mutableFloatStateOf(deviceHour()) }
     if (mix.realTime) {
@@ -42,8 +43,8 @@ fun AmbientScene(
     when (val scene = sceneOverride ?: mix.scene) {
         Scene.CITY -> CityScene(
             rain = rain, pulse = pulse, level = level, modifier = modifier,
-            hour = hour, season = mix.season,
+            hour = hour, season = mix.season, animate = animate,
         )
-        else -> LandscapeScene(scene = scene, hour = hour, season = mix.season, rain = rain, modifier = modifier)
+        else -> LandscapeScene(scene = scene, hour = hour, season = mix.season, rain = rain, modifier = modifier, animate = animate)
     }
 }

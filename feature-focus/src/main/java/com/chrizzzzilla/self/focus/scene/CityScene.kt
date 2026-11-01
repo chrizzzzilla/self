@@ -59,6 +59,7 @@ fun CityScene(
     modifier: Modifier = Modifier,
     hour: () -> Float = { 22f },
     season: Season = Season.SUMMER,
+    animate: Boolean = true,
 ) {
     val time = remember { mutableFloatStateOf(0f) }
     val glow = remember { mutableFloatStateOf(0f) }
@@ -66,9 +67,9 @@ fun CityScene(
     val rainAmount = remember { mutableFloatStateOf(if (rain) 1f else 0f) }
     val model = remember { CityModel.generate(seed = 2026) }
 
-    LaunchedEffect(rain) {
+    LaunchedEffect(rain, animate) {
         var last = 0L
-        while (true) {
+        while (animate) {
             withFrameNanos { now ->
                 val dt = if (last == 0L) 0f else ((now - last) / 1e9f).coerceAtMost(0.1f)
                 last = now

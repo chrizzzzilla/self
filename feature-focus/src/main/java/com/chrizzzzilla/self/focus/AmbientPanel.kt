@@ -67,7 +67,6 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.chrizzzzilla.self.core.design.AmbientBackground
 import com.chrizzzzilla.self.core.design.AmbientColors
 import com.chrizzzzilla.self.core.design.Manrope
 import com.chrizzzzilla.self.focus.audio.Ambience
@@ -166,7 +165,6 @@ fun AmbientPanel(onClose: () -> Unit, onFocusMode: (() -> Unit)? = null) {
     val update: (AmbientMix) -> Unit = { FocusPlayer.update(it) }
 
     Box(Modifier.fillMaxSize().background(AmbientColors.Ground)) {
-        AmbientBackground(Modifier.fillMaxSize(), threads = false)
         BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 20.dp)) {
             val wide = maxWidth > 760.dp
             Column(Modifier.fillMaxSize()) {
@@ -444,6 +442,7 @@ private fun ScenePreview(scene: Scene, mix: AmbientMix, selected: Boolean, modif
                 pulse = { 0f },
                 level = { 0f },
                 sceneOverride = scene,
+                animate = selected,
                 modifier = Modifier.fillMaxSize(),
             )
         }

@@ -110,7 +110,7 @@ internal fun ReaderTopChrome(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box(Modifier.size(52.dp)) {
-                        ArtySwarm(Modifier.fillMaxSize(), particles = 220, pulse = { if (playing) FocusPlayer.pulse else 0f })
+                        ArtySwarm(Modifier.fillMaxSize(), particles = 220, pulse = { if (playing) FocusPlayer.pulse else 0f }, onLight = true)
                     }
                     Text(
                         stringResource(R.string.reader_ambient).uppercase(),
@@ -128,7 +128,7 @@ internal fun ReaderTopChrome(
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.End,
+                    textAlign = TextAlign.Center,
                     modifier = Modifier
                         .weight(1f)
                         .padding(horizontal = 8.dp),
@@ -137,7 +137,6 @@ internal fun ReaderTopChrome(
                     Icon(
                         painterResource(R.drawable.reader_ic_back),
                         stringResource(R.string.reader_back),
-                        modifier = Modifier.graphicsLayer { rotationZ = 180f },
                     )
                 }
             }
@@ -166,13 +165,7 @@ internal fun ReaderTopChrome(
     }
 
     if (ui.showAmbient.value && !ui.focusMode.value) {
-        AmbientPanelDialog(
-            onDismiss = { ui.showAmbient.value = false },
-            onFocusMode = {
-                ui.showAmbient.value = false
-                onFocusMode()
-            },
-        )
+        AmbientPanelDialog(onDismiss = { ui.showAmbient.value = false })
     }
 }
 
@@ -383,6 +376,7 @@ internal fun ReaderBackdrop(ui: ReaderUiState, onExitFocus: () -> Unit) {
     Box(Modifier.fillMaxSize()) {
         AmbientScene(
             mix = mix,
+            animate = !ui.showAmbient.value,
             rain = NatureSound.RAIN in mix.nature && playing,
             pulse = { if (playing) FocusPlayer.pulse else 0f },
             level = { if (playing) FocusPlayer.level * 3f else 0f },
