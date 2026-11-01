@@ -32,14 +32,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.chrizzzzilla.self.core.design.WidthClass
 import com.chrizzzzilla.self.core.design.currentWidthClass
-import com.chrizzzzilla.self.focus.FocusScreen
 import com.chrizzzzilla.self.game.GameScreen
 import com.chrizzzzilla.self.reader.LibraryScreen
 
-/** Die drei Bereiche der App. Neue Bereiche = neuer Eintrag + neues Feature-Modul. */
+/** Die Bereiche der App. Neue Bereiche = neuer Eintrag + neues Feature-Modul. */
 enum class Section(@StringRes val label: Int, @DrawableRes val icon: Int) {
     READ(R.string.app_section_read, R.drawable.app_ic_read),
-    FOCUS(R.string.app_section_focus, R.drawable.app_ic_focus),
     GAME(R.string.app_section_game, R.drawable.app_ic_game),
 }
 
@@ -127,7 +125,6 @@ private fun SectionContent(
             onIncomingBookHandled = onIncomingBookHandled,
             modifier = modifier,
         )
-        Section.FOCUS -> FocusScreen(modifier = modifier.background(MaterialTheme.colorScheme.background))
         Section.GAME -> GameScreen(modifier = modifier.background(MaterialTheme.colorScheme.background))
     }
 }

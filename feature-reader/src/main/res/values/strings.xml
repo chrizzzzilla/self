@@ -23,8 +23,13 @@
     <string name="reader_back">Zurück</string>
     <string name="reader_toc">Inhaltsverzeichnis</string>
     <string name="reader_display">Darstellung</string>
-    <string name="reader_music">Fokus-Musik</string>
-    <string name="reader_music_later">Fokus-Musik kommt in einer späteren Version.</string>
+    <string name="reader_music">Klang</string>
+    <string name="reader_focus_mode">Fokusmodus</string>
+    <string name="reader_back_to_book">Zum Buch</string>
+    <string name="reader_focus_hint">Tippe auf das Bild, um die Bedienung ein- oder auszublenden.</string>
+    <string name="reader_filter">Lesefilter</string>
+    <string name="reader_filter_low">Bild</string>
+    <string name="reader_filter_high">Buch</string>
     <string name="reader_chapter_fallback">Kapitel %1$d</string>
 
     <string name="reader_font_size">Schriftgröße</string>

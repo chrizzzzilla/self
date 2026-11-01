@@ -2,6 +2,5 @@
 <resources>
     <string name="app_name">Self</string>
     <string name="app_section_read">Lesen</string>
-    <string name="app_section_focus">Fokus</string>
     <string name="app_section_game">Spiel</string>
 </resources>

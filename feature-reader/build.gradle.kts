@@ -26,6 +26,7 @@ dependencies {
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     implementation(project(":core"))
+    implementation(project(":feature-focus"))
 
     implementation(libs.readium.shared)
     implementation(libs.readium.streamer)

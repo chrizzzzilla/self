@@ -1,16 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="focus_title">Fokus</string>
     <string name="focus_play">Abspielen</string>
     <string name="focus_pause">Pause</string>
-    <string name="focus_energy">Stimmung</string>
-    <string name="focus_energy_low">ruhig</string>
-    <string name="focus_energy_high">aktiv</string>
-    <string name="focus_brightness">Klang</string>
-    <string name="focus_brightness_low">dunkel</string>
-    <string name="focus_brightness_high">hell</string>
-    <string name="focus_tempo">Tempo</string>
-    <string name="focus_tempo_value">%1$d BPM</string>
-    <string name="focus_rain">Regen</string>
-    <string name="focus_hint">Tippe auf das Bild, um die Regler ein- oder auszublenden.</string>
+
+    <string name="ambient_title">Klang</string>
+    <string name="ambient_presets">Presets</string>
+    <string name="ambient_save_in">In Preset %1$d speichern</string>
+    <string name="ambient_save_as">Als %1$d</string>
+    <string name="ambient_presets_hint">Antippen lädt ein Preset. Danach kannst du alles ändern und wieder speichern.</string>
+    <string name="ambient_ambience">Ambiente</string>
+    <string name="ambient_nature">Naturgeräusche</string>
+    <string name="ambient_percussion">Percussion</string>
+    <string name="ambient_off">Aus</string>
+    <string name="ambient_volume">Lautstärke</string>
+    <string name="ambient_tone">Klang</string>
+    <string name="ambient_dark">dunkel</string>
+    <string name="ambient_bright">hell</string>
+    <string name="ambient_speed">Tempo (%1$d BPM)</string>
+    <string name="ambient_slow">langsam</string>
+    <string name="ambient_fast">schnell</string>
 </resources>

@@ -1,6 +1,19 @@
 package com.chrizzzzilla.self.reader
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.TextButton
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.chrizzzzilla.self.focus.AmbientControls
+import com.chrizzzzilla.self.focus.FocusPlayer
+import com.chrizzzzilla.self.focus.audio.NatureSound
+import com.chrizzzzilla.self.focus.scene.CityScene
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.clickable
@@ -58,13 +71,14 @@ internal fun ReaderTopChrome(
     title: String,
     tableOfContents: List<Link>,
     readingOrder: List<Link>,
-    focusAvailable: Boolean,
     onBack: () -> Unit,
-    onMusic: () -> Unit,
+    onFocusMode: () -> Unit,
     onLinkSelected: (Link) -> Unit,
     onThemeSelected: (AppTheme) -> Unit,
     onFontScaleSelected: (Double) -> Unit,
+    onReadingFilterSelected: (Float) -> Unit,
 ) {
+    val playing by FocusPlayer.isPlaying.collectAsStateWithLifecycle()
     AnimatedVisibility(visible = ui.chromeVisible.value, enter = fadeIn(), exit = fadeOut()) {
         Surface(
             color = MaterialTheme.colorScheme.surface.copy(alpha = CHROME_ALPHA),
@@ -91,17 +105,16 @@ internal fun ReaderTopChrome(
                         .weight(1f)
                         .padding(horizontal = 8.dp),
                 )
-                // Platz fuer die spaetere Fokus-Musik (laeuft dann im Hintergrund weiter).
-                IconButton(onClick = onMusic) {
+                // Klang-Mixer (laeuft beim Lesen im Hintergrund weiter)
+                IconButton(onClick = { ui.showAmbient.value = true }) {
                     Icon(
                         painterResource(R.drawable.reader_ic_music),
                         stringResource(R.string.reader_music),
-                        tint = if (focusAvailable) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                        },
+                        tint = if (playing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     )
+                }
+                IconButton(onClick = onFocusMode) {
+                    Icon(painterResource(R.drawable.reader_ic_scene), stringResource(R.string.reader_focus_mode))
                 }
                 IconButton(onClick = { ui.showToc.value = true }) {
                     Icon(painterResource(R.drawable.reader_ic_toc), stringResource(R.string.reader_toc))
@@ -129,7 +142,14 @@ internal fun ReaderTopChrome(
                 settings = ui.settings.value,
                 onThemeSelected = onThemeSelected,
                 onFontScaleSelected = onFontScaleSelected,
+                onReadingFilterSelected = onReadingFilterSelected,
             )
+        }
+    }
+
+    if (ui.showAmbient.value && !ui.focusMode.value) {
+        ModalBottomSheet(onDismissRequest = { ui.showAmbient.value = false }) {
+            AmbientControls()
         }
     }
 }
@@ -244,6 +264,7 @@ private fun DisplaySettings(
     settings: AppSettings,
     onThemeSelected: (AppTheme) -> Unit,
     onFontScaleSelected: (Double) -> Unit,
+    onReadingFilterSelected: (Float) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -294,6 +315,114 @@ private fun DisplaySettings(
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.widthIn(min = 52.dp),
             )
+        }
+
+        Text(stringResource(R.string.reader_filter), style = MaterialTheme.typography.labelLarge)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(R.string.reader_filter_low),
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.widthIn(min = 40.dp),
+            )
+            Slider(
+                value = settings.readingFilter,
+                onValueChange = onReadingFilterSelected,
+                valueRange = 0.3f..1f,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                stringResource(R.string.reader_filter_high),
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier
+                    .widthIn(min = 40.dp)
+                    .padding(start = 8.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Hintergrund des Readers: animierte Nachtstadt, davor der Lesefilter (Farbe des Farbmodus).
+ * Im Fokusmodus verschwindet der Filter und unten erscheint eine kleine Bedienleiste.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun ReaderBackdrop(ui: ReaderUiState, onExitFocus: () -> Unit) {
+    val focus = ui.focusMode.value
+    val playing by FocusPlayer.isPlaying.collectAsStateWithLifecycle()
+    val mix by FocusPlayer.mix.collectAsStateWithLifecycle()
+    val filter by animateFloatAsState(
+        targetValue = if (focus) 0f else ui.settings.value.readingFilter,
+        animationSpec = tween(600),
+        label = "lesefilter",
+    )
+
+    Box(Modifier.fillMaxSize()) {
+        CityScene(
+            rain = NatureSound.RAIN in mix.nature && playing,
+            pulse = { if (playing) FocusPlayer.pulse else 0f },
+            level = { if (playing) FocusPlayer.level * 3f else 0f },
+            modifier = Modifier.fillMaxSize(),
+        )
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background.copy(alpha = filter))
+                .then(
+                    if (focus) {
+                        Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) { ui.focusControlsVisible.value = !ui.focusControlsVisible.value }
+                    } else {
+                        Modifier
+                    },
+                ),
+        )
+
+        AnimatedVisibility(
+            visible = focus && ui.focusControlsVisible.value,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .padding(24.dp),
+        ) {
+            Surface(
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                tonalElevation = 3.dp,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    TextButton(onClick = onExitFocus) {
+                        Icon(painterResource(R.drawable.reader_ic_book), contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.reader_back_to_book))
+                    }
+                    IconButton(onClick = { FocusPlayer.toggle() }) {
+                        Icon(
+                            painterResource(R.drawable.reader_ic_music),
+                            stringResource(R.string.reader_music),
+                            tint = if (playing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                    TextButton(onClick = { ui.showAmbient.value = true }) {
+                        Text(stringResource(R.string.reader_music))
+                    }
+                }
+            }
+        }
+    }
+
+    // Klang-Mixer im Fokusmodus (die obere Leiste ist dann ausgeblendet)
+    if (focus && ui.showAmbient.value) {
+        ModalBottomSheet(onDismissRequest = { ui.showAmbient.value = false }) {
+            AmbientControls()
         }
     }
 }

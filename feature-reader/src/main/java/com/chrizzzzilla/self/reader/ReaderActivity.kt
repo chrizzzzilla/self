@@ -6,9 +6,10 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
+import android.webkit.WebView
 import android.widget.FrameLayout
-import android.widget.Toast
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
@@ -29,6 +30,7 @@ import com.chrizzzzilla.self.core.settings.AppTheme
 import kotlinx.coroutines.launch
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.epub.EpubPreferences
+import org.readium.r2.navigator.epub.css.RsProperties
 import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.navigator.preferences.Theme
@@ -37,27 +39,41 @@ import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.services.locateProgression
+import org.readium.r2.navigator.epub.css.Color as CssColor
+import org.readium.r2.navigator.preferences.Color as ReadiumColor
 
-/** Zustand der Bedienleisten, geteilt zwischen den beiden Compose-Leisten. */
+/** Zustand der Bedienleisten, geteilt zwischen den Compose-Ebenen. */
 internal class ReaderUiState(settings: AppSettings, locator: Locator?) {
     val chromeVisible = mutableStateOf(true)
     val settings = mutableStateOf(settings)
     val locator = mutableStateOf(locator)
     val showToc = mutableStateOf(false)
     val showDisplaySettings = mutableStateOf(false)
+    val showAmbient = mutableStateOf(false)
+    /** Fokusmodus: Buch ausgeblendet, nur Szene + Klang. */
+    val focusMode = mutableStateOf(false)
+    val focusControlsVisible = mutableStateOf(true)
+}
+
+/** CSS-Wert "transparent" fuer Readium – damit die Szene hinter dem Text durchscheint. */
+private object TransparentCss : CssColor {
+    override fun toCss(): String = "transparent"
 }
 
 /**
- * Lese-Ansicht. Aufbau:
- *  - unten: Readium-`EpubNavigatorFragment` (zeigt das Buch, Wischen blaettert)
- *  - oben drueber: zwei schmale Compose-Leisten (oben Titel + Knoepfe, unten Fortschritt)
+ * Lese-Ansicht. Ebenen von hinten nach vorne:
+ *  1. animierte Nachtstadt + Lesefilter (Compose)
+ *  2. Readium-`EpubNavigatorFragment` mit durchsichtigem Hintergrund (das Buch)
+ *  3. Bedienleisten oben/unten (Compose)
  * Tippen links/rechts blaettert, Tippen in die Mitte blendet die Leisten ein/aus.
+ * Der Fokusmodus blendet das Buch aus – dann bleiben nur Szene und Klang.
  */
 class ReaderActivity : AppCompatActivity() {
 
     private var session: ReaderSession? = null
     private lateinit var navigator: EpubNavigatorFragment
     private lateinit var ui: ReaderUiState
+    private lateinit var navigatorContainer: View
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val itemId = intent.getStringExtra(Reader.EXTRA_ITEM_ID)
@@ -65,7 +81,6 @@ class ReaderActivity : AppCompatActivity() {
 
         if (current == null) {
             // App wurde vom System beendet und wiederhergestellt: kein Buch mehr im Speicher.
-            // Readium verlangt trotzdem eine FragmentFactory → Dummy setzen und zurueck zur Bibliothek.
             supportFragmentManager.fragmentFactory = EpubNavigatorFragment.createDummyFactory()
             super.onCreate(savedInstanceState)
             finish()
@@ -77,18 +92,38 @@ class ReaderActivity : AppCompatActivity() {
         supportFragmentManager.fragmentFactory = current.navigatorFactory.createFragmentFactory(
             initialLocator = current.lastLocator,
             initialPreferences = current.initialSettings.toEpubPreferences(isSystemDark()),
+            configuration = EpubNavigatorFragment.Configuration(
+                readiumCssRsProperties = RsProperties(backgroundColor = TransparentCss),
+            ),
         )
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         ui = ReaderUiState(current.initialSettings, current.lastLocator)
 
+        val match = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         val root = FrameLayout(this)
-        val container = FragmentContainerView(this).apply { id = R.id.reader_navigator_container }
+
+        // 1) Hintergrund: Szene + Lesefilter (+ Bedienung im Fokusmodus)
         root.addView(
-            container,
-            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+            ComposeView(this).apply {
+                setContent {
+                    SelfTheme(ui.settings.value.theme) {
+                        ReaderBackdrop(
+                            ui = ui,
+                            onExitFocus = { setFocusMode(false) },
+                        )
+                    }
+                }
+            },
+            FrameLayout.LayoutParams(match),
         )
+
+        // 2) Das Buch
+        navigatorContainer = FragmentContainerView(this).apply { id = R.id.reader_navigator_container }
+        root.addView(navigatorContainer, FrameLayout.LayoutParams(match))
+
+        // 3) Leisten
         root.addView(
             ComposeView(this).apply {
                 setContent {
@@ -98,12 +133,12 @@ class ReaderActivity : AppCompatActivity() {
                             title = current.item.title,
                             tableOfContents = current.publication.tableOfContents,
                             readingOrder = current.publication.readingOrder,
-                            focusAvailable = SelfCore.focusAudio.isAvailable,
                             onBack = { finish() },
-                            onMusic = ::onMusicPressed,
+                            onFocusMode = { setFocusMode(true) },
                             onLinkSelected = ::goToLink,
                             onThemeSelected = { theme -> lifecycleScope.launch { SelfCore.settings.setTheme(theme) } },
                             onFontScaleSelected = { scale -> lifecycleScope.launch { SelfCore.settings.setFontScale(scale) } },
+                            onReadingFilterSelected = { v -> lifecycleScope.launch { SelfCore.settings.setReadingFilter(v) } },
                         )
                     }
                 }
@@ -129,6 +164,11 @@ class ReaderActivity : AppCompatActivity() {
         }
         navigator = supportFragmentManager.findFragmentByTag(NAVIGATOR_TAG) as EpubNavigatorFragment
 
+        // Readium-Ansicht durchsichtig machen, sobald sie existiert
+        navigator.viewLifecycleOwnerLiveData.observe(this) { owner ->
+            if (owner != null) clearNavigatorBackgrounds()
+        }
+
         // Tippen an den Raendern blaettert, Tippen in die Mitte zeigt/versteckt die Leisten.
         navigator.addInputListener(DirectionalNavigationAdapter(navigator, animatedTransition = true))
         navigator.addInputListener(object : InputListener {
@@ -144,6 +184,7 @@ class ReaderActivity : AppCompatActivity() {
                     navigator.currentLocator.collect { locator ->
                         current.lastLocator = locator
                         ui.locator.value = locator
+                        clearNavigatorBackgrounds()
                         SelfCore.library.updatePosition(
                             id = current.item.id,
                             progress = locator.locations.totalProgression ?: 0.0,
@@ -155,6 +196,7 @@ class ReaderActivity : AppCompatActivity() {
                     SelfCore.settings.settings.collect { settings ->
                         ui.settings.value = settings
                         navigator.submitPreferences(settings.toEpubPreferences(isSystemDark()))
+                        clearNavigatorBackgrounds()
                         applySystemBarStyle(settings.theme)
                     }
                 }
@@ -169,30 +211,65 @@ class ReaderActivity : AppCompatActivity() {
         if (isFinishing) session?.let { ReaderSessions.close(it) }
     }
 
+    /**
+     * Readium faerbt seinen Seiten-Container in der Theme-Farbe ein, WebViews sind standardmaessig weiss.
+     * Beides auf durchsichtig setzen (nach jedem Einstellungs-/Seitenwechsel erneut).
+     */
+    private fun clearNavigatorBackgrounds() {
+        val view = navigator.view ?: return
+        view.post { makeTransparent(view) }
+    }
+
+    private fun makeTransparent(v: View) {
+        if (v is WebView) {
+            v.setBackgroundColor(Color.TRANSPARENT)
+            return
+        }
+        v.setBackgroundColor(Color.TRANSPARENT)
+        if (v is ViewGroup) for (i in 0 until v.childCount) makeTransparent(v.getChildAt(i))
+    }
+
+    private fun setFocusMode(on: Boolean) {
+        ui.focusMode.value = on
+        ui.focusControlsVisible.value = true
+        if (on) {
+            ui.chromeVisible.value = false
+            navigatorContainer.animate().alpha(0f).setDuration(500).withEndAction {
+                navigatorContainer.visibility = View.INVISIBLE
+            }.start()
+            hideSystemBars(true)
+        } else {
+            navigatorContainer.visibility = View.VISIBLE
+            navigatorContainer.animate().alpha(1f).setDuration(400).start()
+            setChromeVisible(true)
+        }
+    }
+
     private fun setChromeVisible(visible: Boolean) {
         ui.chromeVisible.value = visible
+        hideSystemBars(!visible)
+    }
+
+    private fun hideSystemBars(hide: Boolean) {
         val controller = WindowCompat.getInsetsController(window, window.decorView)
         controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        if (visible) {
-            controller.show(WindowInsetsCompat.Type.systemBars())
-        } else {
-            controller.hide(WindowInsetsCompat.Type.systemBars())
-        }
+        if (hide) controller.hide(WindowInsetsCompat.Type.systemBars()) else controller.show(WindowInsetsCompat.Type.systemBars())
     }
 
     /** Statusleisten-Symbole hell oder dunkel, passend zum Farbmodus. */
     private fun applySystemBarStyle(theme: AppTheme) {
-        val dark = when (theme) {
-            AppTheme.SYSTEM -> isSystemDark()
-            AppTheme.DARK -> true
-            AppTheme.LIGHT, AppTheme.SEPIA -> false
-        }
-        val style = if (dark) {
+        val style = if (isDark(theme)) {
             SystemBarStyle.dark(Color.TRANSPARENT)
         } else {
             SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
         }
         enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+    }
+
+    private fun isDark(theme: AppTheme): Boolean = when (theme) {
+        AppTheme.SYSTEM -> isSystemDark()
+        AppTheme.DARK -> true
+        AppTheme.LIGHT, AppTheme.SEPIA -> false
     }
 
     private fun goToLink(link: Link) {
@@ -207,15 +284,6 @@ class ReaderActivity : AppCompatActivity() {
         }
     }
 
-    private fun onMusicPressed() {
-        val focus = SelfCore.focusAudio
-        if (focus.isAvailable) {
-            focus.toggle()
-        } else {
-            Toast.makeText(this, R.string.reader_music_later, Toast.LENGTH_SHORT).show()
-        }
-    }
-
     private fun isSystemDark(): Boolean =
         (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
@@ -224,17 +292,22 @@ class ReaderActivity : AppCompatActivity() {
     }
 }
 
-/** App-Einstellungen → Readium-Einstellungen. */
-internal fun AppSettings.toEpubPreferences(systemDark: Boolean): EpubPreferences =
-    EpubPreferences(
+/**
+ * App-Einstellungen → Readium-Einstellungen. Den Seitenhintergrund malt nicht Readium,
+ * sondern unser Lesefilter – Readium bekommt nur die passende Textfarbe.
+ */
+internal fun AppSettings.toEpubPreferences(systemDark: Boolean): EpubPreferences {
+    val dark = theme == AppTheme.DARK || (theme == AppTheme.SYSTEM && systemDark)
+    val textColor = when {
+        dark -> 0xFFE6E4DF.toInt()
+        theme == AppTheme.SEPIA -> 0xFF4E3B2C.toInt()
+        else -> 0xFF1B1C1C.toInt()
+    }
+    return EpubPreferences(
         fontSize = fontScale,
-        theme = when (theme) {
-            AppTheme.SYSTEM -> if (systemDark) Theme.DARK else Theme.LIGHT
-            AppTheme.LIGHT -> Theme.LIGHT
-            AppTheme.DARK -> Theme.DARK
-            AppTheme.SEPIA -> Theme.SEPIA
-        },
-        // Seitenweise blaettern statt scrollen. Spalten: Readium waehlt im Querformat
-        // auf grossen Bildschirmen automatisch zwei Spalten (ColumnCount.AUTO).
+        theme = Theme.LIGHT,
+        textColor = ReadiumColor(textColor),
+        // Seitenweise blaettern; im Querformat waehlt Readium auf grossen Bildschirmen zwei Spalten.
         scroll = false,
     )
+}

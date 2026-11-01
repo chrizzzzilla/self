@@ -25,4 +25,5 @@ android {
 dependencies {
     coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(project(":core"))
+    implementation(libs.datastore.preferences)
 }

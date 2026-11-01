@@ -8,54 +8,98 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Process
 import com.chrizzzzilla.self.core.playback.FocusAudio
-import com.chrizzzzilla.self.focus.audio.LofiParams
-import com.chrizzzzilla.self.focus.audio.LofiSynth
+import com.chrizzzzilla.self.focus.audio.AmbientEngine
+import com.chrizzzzilla.self.focus.audio.AmbientMix
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
- * Spielt die generative Lofi-Musik. Lebt fuer die ganze App (laeuft also auch im Reader weiter).
- * Wird in `SelfApp` als `SelfCore.focusAudio` angemeldet.
+ * Spielt die selbst zusammengestellte Klangmischung (Ambiente + Natur + Percussion).
+ * Lebt fuer die ganze App und laeuft beim Lesen im Hintergrund weiter.
  *
- * TODO Phase 2b: Foreground-Service + Benachrichtigung, damit es auch bei ausgeschaltetem
- * Bildschirm zuverlaessig weiterlaeuft.
+ * TODO: Foreground-Service + Benachrichtigung, damit es auch bei ausgeschaltetem Bildschirm
+ * zuverlaessig weiterlaeuft.
  */
 object FocusPlayer : FocusAudio {
 
     private const val SAMPLE_RATE = 44100
     private const val BLOCK_FRAMES = 1024
 
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var audioManager: AudioManager
+    private lateinit var store: AmbientStore
     private var focusRequest: AudioFocusRequest? = null
 
-    private val synth = LofiSynth(SAMPLE_RATE)
+    private val engine = AmbientEngine(SAMPLE_RATE)
     private var thread: Thread? = null
 
     private val _isPlaying = MutableStateFlow(false)
     override val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
+    override val isAvailable: Boolean = true
 
-    private val _params = MutableStateFlow(LofiParams())
-    val params: StateFlow<LofiParams> = _params.asStateFlow()
+    private val _mix = MutableStateFlow(AmbientMix())
+    val mix: StateFlow<AmbientMix> = _mix.asStateFlow()
+
+    private val _activePreset = MutableStateFlow<Int?>(null)
+    /** Zuletzt geladenes/gespeichertes Preset (1–5) oder null. */
+    val activePreset: StateFlow<Int?> = _activePreset.asStateFlow()
+
+    lateinit var presets: StateFlow<List<AmbientMix?>>
+        private set
 
     /** Fuer die Animation (0..1). */
-    val level: Float get() = synth.level
-    val pulse: Float get() = synth.pulse
-
-    override val isAvailable: Boolean = true
+    val level: Float get() = engine.level
+    val pulse: Float get() = engine.pulse
 
     private val audioAttributes = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_MEDIA)
         .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
         .build()
 
+    @OptIn(FlowPreview::class)
     fun init(context: Context) {
+        if (::store.isInitialized) return
         audioManager = context.applicationContext.getSystemService(AudioManager::class.java)
+        store = AmbientStore(context)
+        presets = store.presets.stateIn(scope, SharingStarted.Eagerly, List(AmbientStore.PRESET_COUNT) { null })
+        engine.setMix(_mix.value)
+        scope.launch {
+            store.loadCurrent()?.let { saved ->
+                _mix.value = saved
+                engine.setMix(saved)
+            }
+            // Aenderungen gesammelt speichern
+            _mix.drop(1).debounce(800).onEach { store.saveCurrent(it) }.launchIn(scope)
+        }
     }
 
-    fun update(params: LofiParams) {
-        _params.value = params
-        synth.params = params
+    fun update(mix: AmbientMix) {
+        _mix.value = mix
+        engine.setMix(mix)
+    }
+
+    fun loadPreset(slot: Int) {
+        val preset = presets.value.getOrNull(slot - 1) ?: return
+        update(preset)
+        _activePreset.value = slot
+    }
+
+    fun savePreset(slot: Int) {
+        val current = _mix.value
+        _activePreset.value = slot
+        scope.launch { store.savePreset(slot, current) }
     }
 
     override fun toggle() {
@@ -66,11 +110,11 @@ object FocusPlayer : FocusAudio {
     fun play() {
         if (_isPlaying.value) return
         requestFocus()
-        synth.params = _params.value
-        synth.fadeTarget = 1f
+        engine.setMix(_mix.value)
+        engine.fadeTarget = 1f
         _isPlaying.value = true
         if (thread?.isAlive != true) {
-            thread = Thread(::audioLoop, "self-focus-audio").apply { start() }
+            thread = Thread(::audioLoop, "self-ambient-audio").apply { start() }
         }
     }
 
@@ -78,7 +122,7 @@ object FocusPlayer : FocusAudio {
     fun pause() {
         if (!_isPlaying.value) return
         _isPlaying.value = false
-        synth.fadeTarget = 0f // der Audio-Thread blendet aus und beendet sich dann selbst
+        engine.fadeTarget = 0f // Audio-Thread blendet aus und beendet sich dann selbst
         focusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
     }
 
@@ -87,7 +131,6 @@ object FocusPlayer : FocusAudio {
         val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
             .setAudioAttributes(audioAttributes)
             .setOnAudioFocusChangeListener { change ->
-                // Anruf, Navi-Ansage oder andere Musik → leise stellen
                 if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) pause()
             }
             .build()
@@ -117,18 +160,16 @@ object FocusPlayer : FocusAudio {
         try {
             track.play()
             while (true) {
-                synth.render(buffer, BLOCK_FRAMES)
+                engine.render(buffer, BLOCK_FRAMES)
                 track.write(buffer, 0, buffer.size, AudioTrack.WRITE_BLOCKING)
-                // Ausgeblendet und keiner will mehr Musik → Thread beenden
-                if (synth.isSilent && !_isPlaying.value) break
+                if (engine.isSilent && !_isPlaying.value) break
             }
         } finally {
             runCatching { track.stop() }
             track.release()
             synchronized(this) { if (thread == Thread.currentThread()) thread = null }
-            // Falls waehrend des Ausblendens wieder "Play" gedrueckt wurde
             if (_isPlaying.value) synchronized(this) {
-                if (thread == null) thread = Thread(::audioLoop, "self-focus-audio").apply { start() }
+                if (thread == null) thread = Thread(::audioLoop, "self-ambient-audio").apply { start() }
             }
         }
     }
