@@ -3,6 +3,10 @@ name: APK bauen
 on:
   push:
     branches: [main]
+    # Reine Doku-Aenderungen erzeugen keine neue App-Version.
+    paths-ignore:
+      - "**.md"
+      - ".doku/**"
   pull_request:
   workflow_dispatch:
 
