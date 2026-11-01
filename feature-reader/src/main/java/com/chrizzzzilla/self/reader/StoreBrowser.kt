@@ -148,6 +148,27 @@ internal fun StoreBrowser(
                     )
                 }
             }
+            // Speicher der Seite leeren (z. B. bei „Browser Storage“-Fehlern im Webreader) – Anmeldung bleibt
+            IconButton(onClick = {
+                val origin = Uri.parse(source.url).let { u -> "${u.scheme}://${u.host}" }
+                WebStorage.getInstance().deleteOrigin(origin)
+                web?.clearCache(true)
+                notice = "Webreader zurückgesetzt – das Buch noch einmal öffnen."
+                web = null
+                webKey++
+            }) {
+                androidx.compose.foundation.Canvas(Modifier.padding(12.dp).fillMaxSize()) {
+                    val r = size.minDimension * 0.38f
+                    drawArc(
+                        AmbientColors.Light, 40f, 290f, false,
+                        topLeft = center - androidx.compose.ui.geometry.Offset(r, r), size = androidx.compose.ui.geometry.Size(r * 2, r * 2),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(1.8f * density, cap = androidx.compose.ui.graphics.StrokeCap.Round),
+                    )
+                    val tip = center + androidx.compose.ui.geometry.Offset(r * 0.77f, r * 0.64f)
+                    drawLine(AmbientColors.Light, tip, tip + androidx.compose.ui.geometry.Offset(0f, -r * 0.6f), strokeWidth = 1.8f * density, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                    drawLine(AmbientColors.Light, tip, tip + androidx.compose.ui.geometry.Offset(-r * 0.6f, 0f), strokeWidth = 1.8f * density, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                }
+            }
             IconButton(onClick = { web?.url?.let { openExternal(context, it) } }) {
                 Icon(painterResource(R.drawable.reader_ic_globe), stringResource(R.string.reader_open_in_browser), tint = AmbientColors.Light)
             }
