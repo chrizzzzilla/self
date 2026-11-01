@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.Self" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">#121416</item>
+        <item name="android:windowBackground">#0C0D0F</item>
     </style>
 </resources>

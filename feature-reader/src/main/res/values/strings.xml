@@ -2,9 +2,6 @@
 <resources>
     <string name="reader_library_title">Bibliothek</string>
     <string name="reader_add_book">Buch hinzufügen</string>
-    <string name="reader_empty_title">Noch keine Bücher</string>
-    <string name="reader_empty_text">Tippe auf „Buch hinzufügen“ oder öffne ein EPUB direkt nach dem Download mit dieser App.</string>
-    <string name="reader_long_press_hint">Lange drücken, um ein Buch zu entfernen</string>
     <string name="reader_untitled">Ohne Titel</string>
     <string name="reader_progress_percent">%1$d %%</string>
     <string name="reader_opening">Wird geöffnet …</string>

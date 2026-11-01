@@ -59,6 +59,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.chrizzzzilla.self.core.SelfCore
+import com.chrizzzzilla.self.core.design.ArtyButton
+import com.chrizzzzilla.self.core.design.ArtyMini
 import com.chrizzzzilla.self.core.design.WidthClass
 import com.chrizzzzilla.self.core.library.LibraryItem
 import kotlinx.coroutines.CancellationException
@@ -124,32 +126,25 @@ fun LibraryScreen(
         runTask { Reader.importAndOpen(context, uri) }
     }
 
-    Scaffold(
-        modifier = modifier,
-        topBar = { TopAppBar(title = { Text(stringResource(R.string.reader_library_title)) }) },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { picker.launch(arrayOf("application/epub+zip", "application/octet-stream")) },
-                icon = { Icon(painterResource(R.drawable.reader_ic_add), contentDescription = null) },
-                text = { Text(stringResource(R.string.reader_add_book)) },
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbar) },
-    ) { padding ->
-        Box(
-            Modifier
-                .fillMaxSize()
-                .padding(padding),
-        ) {
+    val openPicker = { picker.launch(arrayOf("application/epub+zip", "application/octet-stream")) }
+
+    Box(modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize()) {
             val list = items
             when {
                 list == null -> Unit
-                list.isEmpty() -> EmptyLibrary(Modifier.align(Alignment.Center))
+                // Noch nichts da: nur Arty in der Mitte, darunter tippt sich "Buch hinzufügen"
+                list.isEmpty() -> ArtyButton(
+                    label = stringResource(R.string.reader_add_book),
+                    onClick = openPicker,
+                    orbSize = if (widthClass == WidthClass.COMPACT) 260.dp else 340.dp,
+                    modifier = Modifier.align(Alignment.Center),
+                )
                 else -> {
                     val minCell = if (widthClass == WidthClass.COMPACT) 132.dp else 168.dp
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = minCell),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
+                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 28.dp, bottom = 120.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         verticalArrangement = Arrangement.spacedBy(20.dp),
                         modifier = Modifier.fillMaxSize(),
@@ -162,6 +157,13 @@ fun LibraryScreen(
                             )
                         }
                     }
+                    // Weitere Buecher: kleiner Arty unten rechts
+                    ArtyMini(
+                        onClick = openPicker,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(16.dp),
+                    )
                 }
             }
 
@@ -169,13 +171,14 @@ fun LibraryScreen(
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.25f)),
+                        .background(Color.Black.copy(alpha = 0.35f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator()
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
                 }
             }
         }
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
 
     toRemove?.let { item ->
@@ -264,33 +267,3 @@ private fun BookCard(item: LibraryItem, onOpen: () -> Unit, onLongPress: () -> U
     }
 }
 
-@Composable
-private fun EmptyLibrary(modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .widthIn(max = 420.dp)
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Icon(
-            painterResource(R.drawable.reader_ic_book),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(56.dp),
-        )
-        Text(stringResource(R.string.reader_empty_title), style = MaterialTheme.typography.titleLarge)
-        Text(
-            stringResource(R.string.reader_empty_text),
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            stringResource(R.string.reader_long_press_hint),
-            style = MaterialTheme.typography.bodySmall,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}

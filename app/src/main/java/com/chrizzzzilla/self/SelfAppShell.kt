@@ -30,6 +30,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.graphics.Color
+import com.chrizzzzilla.self.core.design.AmbientBackground
 import com.chrizzzzilla.self.core.design.WidthClass
 import com.chrizzzzilla.self.core.design.currentWidthClass
 import com.chrizzzzilla.self.game.GameScreen
@@ -55,10 +58,15 @@ fun SelfAppShell(incomingBook: Uri?, onIncomingBookHandled: () -> Unit) {
         if (incomingBook != null) section = Section.READ
     }
 
+    Box(Modifier.fillMaxSize()) {
+    // ruhiger, lebendiger Hintergrund fuer die ganze App
+    AmbientBackground(Modifier.fillMaxSize())
+
     if (widthClass == WidthClass.COMPACT) {
         Scaffold(
+            containerColor = Color.Transparent,
             bottomBar = {
-                NavigationBar {
+                NavigationBar(containerColor = Color.Transparent, tonalElevation = 0.dp) {
                     Section.entries.forEach { entry ->
                         NavigationBarItem(
                             selected = section == entry,
@@ -81,12 +89,8 @@ fun SelfAppShell(incomingBook: Uri?, onIncomingBookHandled: () -> Unit) {
             )
         }
     } else {
-        Row(
-            Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
-        ) {
-            NavigationRail {
+        Row(Modifier.fillMaxSize()) {
+            NavigationRail(containerColor = Color.Transparent) {
                 Spacer(Modifier.height(12.dp))
                 Section.entries.forEach { entry ->
                     NavigationRailItem(
@@ -108,6 +112,7 @@ fun SelfAppShell(incomingBook: Uri?, onIncomingBookHandled: () -> Unit) {
             )
         }
     }
+    }
 }
 
 @Composable
@@ -125,6 +130,6 @@ private fun SectionContent(
             onIncomingBookHandled = onIncomingBookHandled,
             modifier = modifier,
         )
-        Section.GAME -> GameScreen(modifier = modifier.background(MaterialTheme.colorScheme.background))
+        Section.GAME -> GameScreen(modifier = modifier)
     }
 }

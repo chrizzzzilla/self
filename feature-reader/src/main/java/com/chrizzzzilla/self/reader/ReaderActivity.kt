@@ -25,6 +25,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.chrizzzzilla.self.core.SelfCore
 import com.chrizzzzilla.self.core.design.SelfTheme
+import com.chrizzzzilla.self.core.design.enterImmersive
 import com.chrizzzzilla.self.core.settings.AppSettings
 import com.chrizzzzilla.self.core.settings.AppTheme
 import kotlinx.coroutines.launch
@@ -97,7 +98,7 @@ class ReaderActivity : AppCompatActivity() {
             ),
         )
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enterImmersive()
 
         ui = ReaderUiState(current.initialSettings, current.lastLocator)
 
@@ -197,7 +198,6 @@ class ReaderActivity : AppCompatActivity() {
                         ui.settings.value = settings
                         navigator.submitPreferences(settings.toEpubPreferences(isSystemDark()))
                         clearNavigatorBackgrounds()
-                        applySystemBarStyle(settings.theme)
                     }
                 }
             }
@@ -250,10 +250,15 @@ class ReaderActivity : AppCompatActivity() {
         hideSystemBars(!visible)
     }
 
+    /** Uhr, Akku und Navigationsleiste bleiben immer ausgeblendet (Chris, 01.11.). */
+    @Suppress("UNUSED_PARAMETER")
     private fun hideSystemBars(hide: Boolean) {
-        val controller = WindowCompat.getInsetsController(window, window.decorView)
-        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        if (hide) controller.hide(WindowInsetsCompat.Type.systemBars()) else controller.show(WindowInsetsCompat.Type.systemBars())
+        enterImmersive()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && session != null) enterImmersive()
     }
 
     /** Statusleisten-Symbole hell oder dunkel, passend zum Farbmodus. */
