@@ -39,8 +39,6 @@ Beispielkette: Feuerstein → Faustkeil → Steinaxt → Holz → Feuer → Holz
 - Werkzeuge/Einrichtungen bleiben in der Werkstatt; **Gebäude** (und ggf. Ausrüstung wie Schwert/Schild)
   wirken in „Me“, z. B. gegen bestimmte Gegner.
 
-## Offene Entscheidungen
-- Rezepte entdecken (Vorschlag) oder sichtbar?
-- Rohstoffe wachsen täglich nach, oder manche selten?
-- Waffen/Schwarzpulver in „Me“ (Gegner) – klassisch oder „Schatten“?
-- Start mit Steinzeit-Stufe (Rohstoffe, Faustkeil, Steinwerkzeuge, Feuer, Lagerfeuer, Werkbank), dann Metall, dann Gebäude.
+## Entschieden (01.11.2026)
+- Rezepte werden **entdeckt** · manche Rohstoffe **selten** (Feuerstein, Harz: 0–2 pro Tag) · Gegner in „Me“ = **Schatten**
+- Steinzeit-Stufe gebaut (Self 0.1.29): 9 Rohstoffe, 14 Rezepte, Lagerfeuer + Werkbank. Nächste Stufe: Metall.
