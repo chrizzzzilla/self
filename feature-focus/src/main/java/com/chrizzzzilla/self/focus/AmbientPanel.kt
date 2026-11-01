@@ -72,7 +72,10 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.chrizzzzilla.self.core.SelfCore
 import com.chrizzzzilla.self.core.design.AmbientColors
+import com.chrizzzzilla.self.core.settings.AppSettings
+import com.chrizzzzilla.self.core.settings.AppTheme
 import com.chrizzzzilla.self.core.design.Manrope
 import com.chrizzzzilla.self.focus.audio.Ambience
 import com.chrizzzzilla.self.focus.audio.AmbientMix
@@ -234,7 +237,8 @@ fun AmbientPanel(onClose: () -> Unit, onFocusMode: (() -> Unit)? = null) {
                 }
                 val right: @Composable (Modifier) -> Unit = { m ->
                     Column(m.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Text("BILD", style = labelStyle)
+                        ReadingSettings()
+                        Text("BILD", style = labelStyle, modifier = Modifier.padding(top = 10.dp))
                         Scene.entries.chunked(2).forEach { row ->
                             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                                 row.forEach { sc ->
@@ -329,6 +333,78 @@ private fun SaveButton(onClick: () -> Unit) {
             drawCircle(AmbientColors.Arty.copy(alpha = 0.35f + 0.65f * flash.value), radius = w * (0.12f + 0.25f * flash.value), center = c, blendMode = BlendMode.Plus)
             drawCircle(AmbientColors.ArtyText, radius = w * 0.08f, center = c)
         }
+    }
+}
+
+/** Lesen: Farbmodus (Hell/Dunkel/Sepia), Schriftgroesse, Filter vor dem Bild. */
+@Composable
+private fun ReadingSettings() {
+    val settings by SelfCore.settings.settings.collectAsStateWithLifecycle(initialValue = AppSettings())
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("LESEN", style = labelStyle)
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            listOf(
+                Triple(AppTheme.LIGHT, "HELL", Pair(Color(0xFFFBFBF9), Color(0xFF1B1C1C))),
+                Triple(AppTheme.DARK, "DUNKEL", Pair(Color(0xFF121416), Color(0xFFE3E3E1))),
+                Triple(AppTheme.SEPIA, "SEPIA", Pair(Color(0xFFF4ECD8), Color(0xFF5B4636))),
+            ).forEach { (theme, label, colors) ->
+                ThemeChoice(
+                    label = label,
+                    paper = colors.first,
+                    ink = colors.second,
+                    selected = settings.theme == theme,
+                    modifier = Modifier.weight(1f),
+                ) { scope.launch { SelfCore.settings.setTheme(theme) } }
+            }
+        }
+        val fMin = AppSettings.FONT_SCALE_MIN.toFloat()
+        val fMax = AppSettings.FONT_SCALE_MAX.toFloat()
+        TextSlider(
+            "SCHRIFT",
+            ((settings.fontScale.toFloat() - fMin) / (fMax - fMin)),
+            valueText = "${(settings.fontScale * 100).toInt()} %",
+        ) { v ->
+            val step = AppSettings.FONT_SCALE_STEP
+            val scale = fMin + v * (fMax - fMin)
+            val snapped = Math.round(scale / step) * step
+            scope.launch { SelfCore.settings.setFontScale(snapped) }
+        }
+        TextSlider(
+            "FILTER",
+            ((settings.readingFilter - 0.3f) / 0.7f),
+            valueText = "${(settings.readingFilter * 100).toInt()} %",
+        ) { v -> scope.launch { SelfCore.settings.setReadingFilter(0.3f + v * 0.7f) } }
+    }
+}
+
+/** Farbmodus als kleine Buchseite in den echten Farben (Papier + Zeilen). */
+@Composable
+private fun ThemeChoice(label: String, paper: Color, ink: Color, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier
+            .height(56.dp)
+            .clip(shape)
+            .background(if (selected) Color(0xFF1E2A55) else Color(0x14FFFFFF))
+            .border(if (selected) 1.5.dp else 1.dp, if (selected) AmbientColors.Arty else AmbientColors.Light.copy(alpha = 0.14f), shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Canvas(Modifier.size(width = 26.dp, height = 32.dp)) {
+            val r = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx())
+            drawRoundRect(paper, cornerRadius = r)
+            drawRoundRect(ink.copy(alpha = 0.25f), cornerRadius = r, style = Stroke(1f * density))
+            val lx = size.width * 0.2f
+            for (i in 0 until 4) {
+                val y = size.height * (0.25f + i * 0.17f)
+                val len = size.width * (if (i == 3) 0.4f else 0.6f)
+                drawLine(ink.copy(alpha = 0.75f), Offset(lx, y), Offset(lx + len, y), strokeWidth = 1.6f * density, cap = StrokeCap.Round)
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(label, style = labelStyle.copy(fontSize = 10.sp, letterSpacing = 2.sp, color = if (selected) AmbientColors.Light else AmbientColors.Muted))
     }
 }
 

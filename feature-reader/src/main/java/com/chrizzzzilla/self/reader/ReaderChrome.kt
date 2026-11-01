@@ -120,9 +120,6 @@ internal fun ReaderTopChrome(
                 IconButton(onClick = { ui.showToc.value = true }) {
                     Icon(painterResource(R.drawable.reader_ic_toc), stringResource(R.string.reader_toc))
                 }
-                IconButton(onClick = { ui.showDisplaySettings.value = true }) {
-                    Icon(painterResource(R.drawable.reader_ic_text), stringResource(R.string.reader_display))
-                }
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
