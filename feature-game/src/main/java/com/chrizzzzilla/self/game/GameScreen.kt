@@ -84,9 +84,9 @@ fun GameScreen(modifier: Modifier = Modifier, onOverlayChanged: (Boolean) -> Uni
     var workshopInfo by remember { mutableStateOf(0f to 0) }
     LaunchedEffect(workshop) { if (!workshop) workshopInfo = workshopStore.summary() }
     var garden by remember { mutableStateOf(false) }
-    val gardenStore = remember { GardenStore(context) }
-    var gardenInfo by remember { mutableStateOf(0f to 0) }
-    LaunchedEffect(garden) { if (!garden) gardenInfo = gardenStore.summary() }
+    val plantStore = remember { PlantStore(context) }
+    var plantInfo by remember { mutableStateOf(Triple(0f, 1, 0)) }
+    LaunchedEffect(garden) { if (!garden) plantInfo = plantStore.summary() }
     var levelUp by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(playing, workshop, garden) { onOverlayChanged(playing || workshop || garden) }
@@ -128,10 +128,10 @@ fun GameScreen(modifier: Modifier = Modifier, onOverlayChanged: (Boolean) -> Uni
                             done = secs >= DAILY_SECONDS, index = i, onOpen = { workshop = true },
                         )
                     } else {
-                        val (gSecs, gScore) = gardenInfo
+                        val (pSecs, pStage, pGifts) = plantInfo
                         TrainingTile(
-                            game = g, size = small, level = 1 + gScore / 4, fill = (gScore % 4) / 4f,
-                            done = gSecs >= GARDEN_SECONDS, index = i, onOpen = { garden = true },
+                            game = g, size = small, level = pStage, fill = (pGifts % 5) / 5f,
+                            done = pSecs >= PLANT_SECONDS, index = i, onOpen = { garden = true },
                         )
                     }
                 }
@@ -171,7 +171,7 @@ fun GameScreen(modifier: Modifier = Modifier, onOverlayChanged: (Boolean) -> Uni
     }
 
     if (workshop) WorkshopGame(onExit = { workshop = false })
-    if (garden) GardenGame(onExit = { garden = false })
+    if (garden) PlantGame(onExit = { garden = false })
 }
 
 @Composable

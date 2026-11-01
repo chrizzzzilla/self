@@ -1,18 +1,12 @@
-# Path · Demut – „Der Garten“ (Stand 01.11.2026, gebaut in Self 0.1.34)
+# Path · Demut – „Die Pflanze am Fenster“ (Stand 01.11.2026)
 
-## Idee
-Gegenstück zu Ehrgeiz: nicht erzwingen, sondern pflegen, warten, wahrnehmen.
+Ersetzt den Garten (0.1.34–0.1.36).
 
-## Regeln
-- 10 Minuten am Tag, der **Mond** wandert = Restzeit. Eine Hand.
-- 6 Beete. Werkzeuge: **Gießen** (Beet halten, bis die Anzeige im hellen Feld steht), **Hand** (Unkraut zupfen, ernten), **Samen**.
-- Wachstum **nur über Nacht**: richtig gegossen + kein Unkraut → morgen eine Stufe weiter.
-  Zu viel Wasser → heute Ruhetag. **Nichts geht ein**, der Garten wartet.
-- Erfundene Pflanzen: Lichtblüte (Einsicht), Sternmoos (Ruhe), Mondkraut (Heilung), Tauglocke (Klarheit),
-  Glimmbeere (Wärme), Stillwurz (Geduld). Erste Ernte einer Art schaltet die nächste frei.
-- **Bemerken:** 12 kleine Dinge (Tautropfen, Kiesel, Feder …) zeigen sich nur bei langsamem Finger, hastig verschwinden sie.
-  Sammlung „Die kleinen Dinge“ mit einem Satz je Fund. Samenkorn-Fund gibt Samen.
-- Hinweis-Leiste oben sagt immer, was gerade sinnvoll ist.
-
-## Verbindung zu „Me“
-Ernte (Einsicht, Heilung …) löst Schatten auf – Ehrgeiz wehrt sie nur ab.
+- Eine Pflanze auf der Fensterbank, Himmel im Fenster nach echter Uhrzeit. 10 Minuten am Tag, eine Hand.
+- Zehn Handgriffe: Gießen (halten, Anzeige im grünen Feld), Düngen (tippen), Stutzen (Wildtriebe, welke Blätter,
+  Blüten, Verblühtes antippen), Anbinden (ab Stufe 4), Drehen (seitlich wischen), Sprühen, Abstauben (wischen),
+  Zureden (halten – sanfte Worte), Umtopfen (auf dem Topf halten, wenn zu klein), Vorhang (bei praller Sonne zu).
+- Was gebraucht wird, leuchtet blau (Werkzeug + Stelle); alles gut = grüner Schleier.
+- Wachstum nur über Nacht aus dem Zustand des Vortags, Stufen 1–12. Nichts geht ein.
+- Geschenke je nach Situation/Zufall (für „Me“): Tautropfen, Lichtblatt, Steckling, Blüte, Samen, Pflanzensaft,
+  Lichtfaden, Blattglanz, Duft der Ruhe, Mondtropfen (nachts), Wurzelfaser, Humus.
