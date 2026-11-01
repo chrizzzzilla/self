@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Base64
 import android.webkit.CookieManager
+import android.webkit.WebStorage
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.JavascriptInterface
 import android.webkit.URLUtil
@@ -20,6 +21,10 @@ import androidx.activity.compose.BackHandler
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -161,11 +166,22 @@ internal fun StoreBrowser(
             }
         }
         notice?.let {
-            Text(
-                it,
-                style = TextStyle(fontFamily = Manrope, fontSize = 13.sp, color = AmbientColors.Gold),
-                modifier = Modifier.fillMaxWidth().background(Color(0xFF15161C)).padding(horizontal = 20.dp, vertical = 10.dp),
-            )
+            Column(Modifier.fillMaxWidth().background(Color(0xFF15161C)).padding(horizontal = 20.dp, vertical = 10.dp)) {
+                Text(it, style = TextStyle(fontFamily = Manrope, fontSize = 13.sp, color = AmbientColors.Gold))
+                Row(Modifier.padding(top = 8.dp)) {
+                    NoticeAction("WEBREADER ZURÜCKSETZEN") {
+                        // Speicher der Seite (IndexedDB, Cache) leeren – Cookies/Anmeldung bleiben
+                        val origin = Uri.parse(source.url).let { u -> "${u.scheme}://${u.host}" }
+                        WebStorage.getInstance().deleteOrigin(origin)
+                        web?.clearCache(true)
+                        notice = "Webreader zurückgesetzt – das Buch noch einmal öffnen."
+                        web = null
+                        webKey++
+                    }
+                    NoticeAction("IM BROWSER ÖFFNEN") { (web?.url ?: source.url).let { openExternal(context, it) } }
+                    NoticeAction("OK") { notice = null }
+                }
+            }
         }
         androidx.compose.runtime.key(webKey) {
         AndroidView(
@@ -181,7 +197,7 @@ internal fun StoreBrowser(
                     CookieManager.getInstance().setAcceptCookie(true)
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                     webViewClient = SecureUpgradeClient {
-                        notice = "Die Seite ist abgestürzt und wurde neu geladen. Bücher mit Kopierschutz kann Self nicht übernehmen – lies sie hier im Webreader."
+                        notice = "Die Seite ist beim Laden des Buchs abgestürzt und wurde neu geladen. Hilft es nicht: Webreader zurücksetzen (Anmeldung bleibt) oder im Browser öffnen."
                         web = null
                         webKey++
                     }
@@ -270,6 +286,20 @@ private class SecureUpgradeClient(private val onGone: () -> Unit) : WebViewClien
             view.loadUrl(request.url.buildUpon().scheme("https").build().toString())
         }
     }
+}
+
+@Composable
+private fun NoticeAction(label: String, onClick: () -> Unit) {
+    Text(
+        label,
+        style = TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Medium, fontSize = 11.sp, letterSpacing = 2.sp, color = AmbientColors.Light),
+        modifier = Modifier
+            .padding(end = 10.dp)
+            .clip(RoundedCornerShape(50))
+            .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(50))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    )
 }
 
 private fun openExternal(context: Context, url: String) {
