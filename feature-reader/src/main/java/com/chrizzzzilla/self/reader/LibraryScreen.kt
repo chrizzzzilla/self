@@ -79,6 +79,8 @@ fun LibraryScreen(
     incomingBook: Uri?,
     onIncomingBookHandled: () -> Unit,
     modifier: Modifier = Modifier,
+    /** true, solange ein Shop/eine Seite bildschirmfüllend offen ist (dann Menü ausblenden). */
+    onOverlayChanged: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -129,6 +131,7 @@ fun LibraryScreen(
     var chooser by remember { mutableStateOf(false) }
     val openPicker = { chooser = true }
     var store by remember { mutableStateOf<BookSource?>(null) }
+    LaunchedEffect(store) { onOverlayChanged(store != null) }
 
     val sunDiameter = if (widthClass == WidthClass.COMPACT) 380.dp else 560.dp
 

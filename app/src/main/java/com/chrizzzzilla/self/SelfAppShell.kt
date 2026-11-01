@@ -75,6 +75,7 @@ enum class Section(@StringRes val label: Int, @DrawableRes val icon: Int) {
 fun SelfAppShell(incomingBook: Uri?, onIncomingBookHandled: () -> Unit) {
     var section by rememberSaveable { mutableStateOf(Section.READ) }
     var menuOpen by rememberSaveable { mutableStateOf(false) }
+    var overlay by remember { mutableStateOf(false) }
     val widthClass = currentWidthClass()
 
     // Kommt ein Buch über „Öffnen mit“, immer in den Lesebereich wechseln.
@@ -91,6 +92,10 @@ fun SelfAppShell(incomingBook: Uri?, onIncomingBookHandled: () -> Unit) {
                 incomingBook = incomingBook,
                 onIncomingBookHandled = onIncomingBookHandled,
                 modifier = Modifier.fillMaxSize(),
+                onOverlayChanged = {
+                    overlay = it
+                    if (it) menuOpen = false
+                },
             )
             Section.GAME -> GameScreen(modifier = Modifier.fillMaxSize())
         }
@@ -106,7 +111,7 @@ fun SelfAppShell(incomingBook: Uri?, onIncomingBookHandled: () -> Unit) {
             )
         }
 
-        GridMenu(
+        if (!overlay) GridMenu(
             open = menuOpen,
             current = section,
             cell = if (widthClass == WidthClass.COMPACT) 68.dp else 84.dp,

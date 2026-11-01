@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Self</string>
-    <string name="app_section_read">Lesen</string>
-    <string name="app_section_game">Spiel</string>
+    <string name="app_section_read">Soul</string>
+    <string name="app_section_game">Path</string>
 </resources>

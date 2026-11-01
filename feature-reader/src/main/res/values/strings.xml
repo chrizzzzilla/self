@@ -2,6 +2,12 @@
 <resources>
     <string name="reader_library_title">Bibliothek</string>
     <string name="reader_add_book">Buch hinzufügen</string>
+    <string name="reader_source_tolino">Tolino</string>
+    <string name="reader_source_tolino_hint">Gekaufte Bücher (auch mit Kopierschutz) im Webreader lesen</string>
+    <string name="reader_source_jnovel">J-Novel Club</string>
+    <string name="reader_source_jnovel_hint">Manga und Light Novels ohne DRM (Englisch)</string>
+    <string name="reader_source_humble">Humble Bundle</string>
+    <string name="reader_source_humble_hint">Buch- und Manga-Pakete, oft ohne DRM</string>
     <string name="reader_source_beam">Beam</string>
     <string name="reader_source_beam_hint">E-Books ohne Kopierschutz kaufen</string>
     <string name="reader_source_libreture">Libreture</string>

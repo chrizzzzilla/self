@@ -56,10 +56,14 @@ internal enum class BookSource(
     @DrawableRes val icon: Int,
     val url: String,
 ) {
+    /** Gekaufte Tolino-/Orell-Füssli-Bücher (auch mit Kopierschutz) direkt im Webreader lesen. */
+    TOLINO(R.string.reader_source_tolino, R.string.reader_source_tolino_hint, R.drawable.reader_ic_book, "https://webreader.mytolino.com/"),
     BEAM(R.string.reader_source_beam, R.string.reader_source_beam_hint, R.drawable.reader_ic_globe, "https://www.beam-shop.de/"),
     LIBRETURE(R.string.reader_source_libreture, R.string.reader_source_libreture_hint, R.drawable.reader_ic_globe, "https://libreture.com/"),
     GUTENBERG(R.string.reader_source_gutenberg, R.string.reader_source_gutenberg_hint, R.drawable.reader_ic_book, "https://www.gutenberg.org/browse/languages/de"),
     STANDARD_EBOOKS(R.string.reader_source_standard, R.string.reader_source_standard_hint, R.drawable.reader_ic_book, "https://standardebooks.org/ebooks"),
+    JNOVEL(R.string.reader_source_jnovel, R.string.reader_source_jnovel_hint, R.drawable.reader_ic_globe, "https://j-novel.club/"),
+    HUMBLE(R.string.reader_source_humble, R.string.reader_source_humble_hint, R.drawable.reader_ic_globe, "https://www.humblebundle.com/books"),
 }
 
 /** Was eine Download-Anfrage aus dem eingebauten Browser enthaelt. */
@@ -147,6 +151,8 @@ internal fun StoreBrowser(
                 WebView(ctx).apply {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
+                    @Suppress("DEPRECATION")
+                    settings.databaseEnabled = true
                     settings.loadWithOverviewMode = true
                     settings.useWideViewPort = true
                     CookieManager.getInstance().setAcceptCookie(true)
