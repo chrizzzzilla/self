@@ -14,9 +14,7 @@ enum class Ambience(val label: String) {
     BELLS("Glocken"),
     MORNING("Morgenlicht"),
     DUSK("Dämmerung"),
-    CRYSTAL("Kristall"),
     PIANO("Klavier"),
-    FLOATING("Schwebetöne"),
 }
 
 /** Naturgeraeusche (mehrere gleichzeitig moeglich). */
@@ -39,7 +37,6 @@ enum class Percussion(val label: String) {
     BRUSHES("Jazz-Besen"),
     HEARTBEAT("Herzschlag"),
     HAND_DRUMS("Handtrommeln"),
-    CLOCKWORK("Uhrwerk"),
     TRIP_HOP("Trip-Hop"),
     MINIMAL("Minimal"),
     RAIN_DRUM("Regentrommel"),

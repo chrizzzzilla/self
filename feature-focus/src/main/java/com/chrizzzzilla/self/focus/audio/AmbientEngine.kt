@@ -29,6 +29,14 @@ internal class AmbientEngine(sampleRate: Int) {
 
     val isSilent: Boolean get() = fade < 0.0005f && fadeTarget == 0f
 
+    /** Laedt Naturaufnahmen aus den Assets (wird von FocusPlayer gesetzt). */
+    fun setNatureLoader(loader: (String) -> ShortArray?) {
+        nature.loader = loader
+        nature.setActive(mix.nature)
+    }
+
+    private var housekeepingFrames = 0
+
     fun setMix(m: AmbientMix) {
         mix = m
         ambience.setType(m.ambience)
@@ -78,6 +86,11 @@ internal class AmbientEngine(sampleRate: Int) {
             out[2 * i] = l
             out[2 * i + 1] = r
             sumSq += (l * l + r * r) * 0.5f
+        }
+        housekeepingFrames += frames
+        if (housekeepingFrames > d.sampleRate) {
+            housekeepingFrames = 0
+            nature.housekeeping(1f)
         }
         level = sqrt(sumSq / frames).coerceIn(0f, 1f)
         levelAmbience = (sqrt(sa / frames) * fade * 4f).coerceIn(0f, 1f)

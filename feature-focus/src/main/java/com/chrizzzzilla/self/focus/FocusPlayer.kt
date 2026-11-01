@@ -10,6 +10,7 @@ import android.os.Process
 import com.chrizzzzilla.self.core.playback.FocusAudio
 import com.chrizzzzilla.self.focus.audio.AmbientEngine
 import com.chrizzzzilla.self.focus.audio.AmbientMix
+import com.chrizzzzilla.self.focus.audio.SampleDecoder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -76,6 +77,8 @@ object FocusPlayer : FocusAudio {
         if (::store.isInitialized) return
         audioManager = context.applicationContext.getSystemService(AudioManager::class.java)
         store = AmbientStore(context)
+        val app = context.applicationContext
+        engine.setNatureLoader { name -> SampleDecoder.decode(app, "nature/$name.ogg") }
         presets = store.presets.stateIn(scope, SharingStarted.Eagerly, List(AmbientStore.PRESET_COUNT) { null })
         engine.setMix(_mix.value)
         scope.launch {

@@ -219,7 +219,7 @@ internal class AmbienceLayer(private val d: Dsp) {
         outL = l * switchFade
         outR = r * switchFade
         send = (l + r) * 0.5f * switchFade * when (t) {
-            Ambience.BELLS, Ambience.CRYSTAL, Ambience.PIANO -> 0.9f
+            Ambience.BELLS, Ambience.PIANO -> 0.9f
             Ambience.LOFI_KEYS -> 0.45f
             else -> 0.6f
         }
@@ -291,15 +291,6 @@ internal class AmbienceLayer(private val d: Dsp) {
                     keyOn(n.toFloat(), 0.3f, 0, decaySec = 3f, ratio = 1f, index = 0.8f, melody = true)
                 }
             }
-            Ambience.CRYSTAL -> {
-                if (samplesToEvent <= 0.0) {
-                    samplesToEvent = secs(1.2f + d.rand() * 2.2f)
-                    releaseOldestPure()
-                    val n = 84 + key % 12 - 12 + pentatonic[d.randInt(5)] + 12 * d.randInt(2)
-                    pureOn(n.toFloat(), 0.45f + 0.2f * d.rand(), beat = 0.3f + d.rand(), attack = 2.5f, release = 6f)
-                }
-                droneTarget = 0.25f; droneFreq = d.midiHz((48 + key).toFloat())
-            }
             Ambience.PIANO -> {
                 if (samplesToEvent <= 0.0) {
                     samplesToEvent = secs(1.4f + d.rand() * 3.2f)
@@ -312,17 +303,6 @@ internal class AmbienceLayer(private val d: Dsp) {
                         keyOn(n.toFloat(), 0.3f + 0.25f * d.rand(), delay = it * (0.09f * d.sr * (1 + d.rand())).toInt(), decaySec = 3.2f, ratio = 1f, index = 0.55f, melody = true)
                     }
                     if (d.rand() < 0.35f) keyOn((36 + (key + chord.degree) % 12).toFloat(), 0.35f, 0, 3.5f, 1f, 0.4f, true)
-                }
-            }
-            Ambience.FLOATING -> {
-                if (samplesToChord <= 0.0) {
-                    samplesToChord = secs(18f + d.rand() * 10f)
-                    chordIndex++
-                    releasePads()
-                    val root = 48 + (key + chord.degree) % 12
-                    pureOn(root.toFloat(), 0.8f, beat = 4f + d.rand() * 3f, attack = 6f, release = 8f)
-                    pureOn((root + 7).toFloat(), 0.55f, beat = 5f + d.rand() * 2f, attack = 7f, release = 8f)
-                    pureOn((root + chord.notes[0]).toFloat() + 12f, 0.35f, beat = 3f + d.rand() * 3f, attack = 8f, release = 8f)
                 }
             }
         }

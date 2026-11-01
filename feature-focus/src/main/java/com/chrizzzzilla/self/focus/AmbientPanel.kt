@@ -94,9 +94,7 @@ private fun look(a: Ambience): Look = when (a) {
     Ambience.BELLS -> Look("🔔", Color(0xFFE8C25A))
     Ambience.MORNING -> Look("☀️", Color(0xFFF5B84A))
     Ambience.DUSK -> Look("🌆", Color(0xFFC0607A))
-    Ambience.CRYSTAL -> Look("💎", Color(0xFF5EC8E0))
     Ambience.PIANO -> Look("🎼", Color(0xFFA8A0C8))
-    Ambience.FLOATING -> Look("🫧", Color(0xFF7ED0C0))
 }
 
 private fun look(n: NatureSound): Look = when (n) {
@@ -117,7 +115,6 @@ private fun look(p: Percussion): Look = when (p) {
     Percussion.BRUSHES -> Look("🎷", Color(0xFFC09060))
     Percussion.HEARTBEAT -> Look("💓", Color(0xFFE06A7A))
     Percussion.HAND_DRUMS -> Look("🪘", Color(0xFFC8784A))
-    Percussion.CLOCKWORK -> Look("⏱️", Color(0xFFA0A8B8))
     Percussion.TRIP_HOP -> Look("🎧", Color(0xFF7A6AC0))
     Percussion.MINIMAL -> Look("◽", Color(0xFF9AA0A8))
     Percussion.RAIN_DRUM -> Look("🌦️", Color(0xFF6A98C0))
@@ -229,7 +226,13 @@ fun AmbientPanel(onClose: () -> Unit, onFocusMode: (() -> Unit)? = null) {
                                 }
                             }
                         }
-                        SoundSection("PERCUSSION", mix.percussionVolume, { update(mix.copy(percussionVolume = it)) }) {
+                        SoundSection(
+                            "PERCUSSION", mix.percussionVolume, { update(mix.copy(percussionVolume = it)) },
+                            below = {
+                                IconSlider("🐢", "🐇", mix.percussionSpeed) { update(mix.copy(percussionSpeed = it)) }
+                                IconSlider("🌑", "☀️", mix.percussionTone) { update(mix.copy(percussionTone = it)) }
+                            },
+                        ) {
                             Percussion.entries.forEach { p ->
                                 val l = look(p)
                                 SoundTile(l.emoji, p.label, l.color, mix.percussion == p) {
@@ -237,8 +240,6 @@ fun AmbientPanel(onClose: () -> Unit, onFocusMode: (() -> Unit)? = null) {
                                 }
                             }
                         }
-                        LineSlider("TEMPO · ${mix.percussionBpm.toInt()} BPM", "langsam", "schnell", mix.percussionSpeed) { update(mix.copy(percussionSpeed = it)) }
-                        LineSlider("KLANG DER PERCUSSION", "dunkel", "hell", mix.percussionTone) { update(mix.copy(percussionTone = it)) }
                         Spacer(Modifier.height(24.dp))
                     }
                 }
@@ -322,18 +323,37 @@ private fun Pill(text: String, selected: Boolean, enabled: Boolean, wide: Boolea
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SoundSection(title: String, volume: Float, onVolume: (Float) -> Unit, items: @Composable () -> Unit) {
-    Column {
-        Text(title, style = labelStyle, modifier = Modifier.padding(bottom = 10.dp))
-        Row {
-            FlowRow(
-                Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) { items() }
-            Spacer(Modifier.width(14.dp))
-            VerticalVolume(volume, onVolume, Modifier.width(34.dp).height(176.dp))
-        }
+private fun SoundSection(
+    title: String,
+    volume: Float,
+    onVolume: (Float) -> Unit,
+    below: (@Composable () -> Unit)? = null,
+    items: @Composable () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, style = labelStyle, modifier = Modifier.padding(bottom = 4.dp))
+        FlowRow(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) { items() }
+        IconSlider("🔈", "🔊", volume, onChange = onVolume)
+        below?.invoke()
+    }
+}
+
+/** Waagerechter Regler mit Symbolen statt Text an den Enden; grosser Daumen, gut zu greifen. */
+@Composable
+private fun IconSlider(low: String, high: String, value: Float, modifier: Modifier = Modifier, onChange: (Float) -> Unit) {
+    Row(modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(low, fontSize = 18.sp, modifier = Modifier.width(32.dp), textAlign = TextAlign.Center)
+        Slider(
+            value = value.coerceIn(0f, 1f),
+            onValueChange = onChange,
+            modifier = Modifier.weight(1f),
+            colors = SliderDefaults.colors(thumbColor = AmbientColors.Light, activeTrackColor = AmbientColors.Arty, inactiveTrackColor = Color(0x33FFFFFF)),
+        )
+        Text(high, fontSize = 18.sp, modifier = Modifier.width(32.dp), textAlign = TextAlign.Center)
     }
 }
 
@@ -372,32 +392,6 @@ private fun SoundTile(emoji: String, label: String, color: Color, selected: Bool
     }
 }
 
-/** Senkrechter Lautstaerke-Regler: hoch = lauter. */
-@Composable
-private fun VerticalVolume(value: Float, onChange: (Float) -> Unit, modifier: Modifier = Modifier) {
-    val v = value.coerceIn(0f, 1f)
-    Canvas(
-        modifier
-            .pointerInput(Unit) {
-                detectTapGestures { pos -> onChange((1f - pos.y / size.height).coerceIn(0f, 1f)) }
-            }
-            .pointerInput(Unit) {
-                detectDragGestures { change, _ -> onChange((1f - change.position.y / size.height).coerceIn(0f, 1f)) }
-            },
-    ) {
-        val trackW = size.width * 0.32f
-        val left = (size.width - trackW) / 2f
-        val r = androidx.compose.ui.geometry.CornerRadius(trackW / 2f)
-        drawRoundRect(Color(0x22FFFFFF), topLeft = Offset(left, 0f), size = Size(trackW, size.height), cornerRadius = r)
-        val fillTop = size.height * (1f - v)
-        drawRoundRect(
-            Brush.verticalGradient(listOf(AmbientColors.ArtyText, AmbientColors.Arty.copy(alpha = 0.6f)), startY = fillTop, endY = size.height),
-            topLeft = Offset(left, fillTop), size = Size(trackW, size.height - fillTop), cornerRadius = r,
-        )
-        drawCircle(AmbientColors.Arty.copy(alpha = 0.35f), radius = size.width * 0.5f, center = Offset(size.width / 2f, fillTop), blendMode = BlendMode.Plus)
-        drawCircle(AmbientColors.Light, radius = size.width * 0.22f, center = Offset(size.width / 2f, fillTop))
-    }
-}
 
 @Composable
 private fun LineSlider(

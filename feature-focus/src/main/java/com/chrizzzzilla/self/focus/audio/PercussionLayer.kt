@@ -52,9 +52,6 @@ internal class PercussionLayer(private val d: Dsp) {
             swing = 0.15f,
             congaLo = "8.....6...7.....", congaHi = "...56......6..5.", shaker = "2.2.2.2.2.2.2.2.",
         ),
-        Percussion.CLOCKWORK to Pat(
-            swing = 0f, tick = "6...........6...", tock = "....5.......5...", hat = "..2...2...2...2.",
-        ),
         Percussion.TRIP_HOP to Pat(
             swing = 0.1f, halfTime = true,
             kick = "9......6..8.....", snare = "........9.......", hat = "4...4...4...4.4.", open = "..............5.",
