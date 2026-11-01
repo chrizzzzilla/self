@@ -126,7 +126,10 @@ fun LibraryScreen(
         runTask { Reader.importAndOpen(context, uri) }
     }
 
-    val openPicker = { picker.launch(arrayOf("application/epub+zip", "application/octet-stream")) }
+    val openFiles = { picker.launch(arrayOf("application/epub+zip", "application/octet-stream")) }
+    var chooser by remember { mutableStateOf(false) }
+    val openPicker = { chooser = true }
+    val noBrowser = stringResource(R.string.reader_no_browser)
 
     Box(modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize()) {
@@ -179,6 +182,24 @@ fun LibraryScreen(
             }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
+
+        if (chooser) {
+            SourceChooser(
+                onStore = {
+                    chooser = false
+                    // Shop im Browser: Anmeldung bleibt dort gespeichert, Self speichert keine Passwörter.
+                    val opened = runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(STORE_URL)))
+                    }.isSuccess
+                    if (!opened) scope.launch { snackbar.showSnackbar(noBrowser) }
+                },
+                onFiles = {
+                    chooser = false
+                    openFiles()
+                },
+                onDismiss = { chooser = false },
+            )
+        }
     }
 
     toRemove?.let { item ->
@@ -198,6 +219,9 @@ fun LibraryScreen(
         )
     }
 }
+
+/** Orell Füssli (Tolino-Partner) – dort im Kundenkonto die gekauften E-Books herunterladen. */
+private const val STORE_URL = "https://www.orellfuessli.ch/"
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

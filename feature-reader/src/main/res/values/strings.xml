@@ -2,6 +2,11 @@
 <resources>
     <string name="reader_library_title">Bibliothek</string>
     <string name="reader_add_book">Buch hinzufügen</string>
+    <string name="reader_source_store">Orell Füssli · Tolino</string>
+    <string name="reader_source_store_hint">Im Browser anmelden, EPUB laden, mit Self öffnen</string>
+    <string name="reader_source_files">Eigene Datei</string>
+    <string name="reader_source_files_hint">EPUB vom Gerät wählen</string>
+    <string name="reader_no_browser">Kein Browser gefunden.</string>
     <string name="reader_untitled">Ohne Titel</string>
     <string name="reader_progress_percent">%1$d %%</string>
     <string name="reader_opening">Wird geöffnet …</string>
