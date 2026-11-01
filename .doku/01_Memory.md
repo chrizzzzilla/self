@@ -1,5 +1,12 @@
 # Self — Session-Memory (neueste oben)
 
+## 2026-11-01 — Session 1g: Lesen ins Ambiente, Weiterlesen, Spiel Ruhe (bis 0.1.21) [Rechner: Office]
+- Ambiente-Panel rechts: LESEN (Hell/Dunkel/Sepia, Schrift, Filter); Aa-Knopf weg. Ambiente startet mit der App (letzte Mischung).
+- Soul: „Weiterlesen“ oben mittig (zuletzt geöffnetes Buch).
+- Path: Me + Ruhe/Ehrgeiz/Demut. Ruhe = CalmGame.kt: Atem halten/loslassen, 4 Stationen/Tag (See, Strand, Boot, Sturm) à 2,5 Min, Licht aus → Text statt Game Over.
+- Progression (PathStore.kt): Station n = n Punkte, Level-Schwelle 10·1,25^(L−1); Fähigkeiten: Vorahnung L2, Schild L3, Ruhiger Atem L4 (CalmAbilities).
+- Offen: Ehrgeiz + Demut, Me (RPG/Weltenbau, Lesezeit fließt ein), Feedback zu Ruhe.
+
 ## 2026-11-01 — Session 1f: Bibliothek-Fenster, CBZ, echte Naturaufnahmen (bis 0.1.18) [Rechner: Office]
 - Naturgeräusche = echte CC0-Aufnahmen (BigSoundBank, assets/nature, QUELLEN.txt), Loop mit 2-s-Überblendung, SampleDecoder (MediaCodec).
 - Chris: keine Menschen/Tiere in Szenen, nur laues Lüftchen, kein Play-Knopf (hörbar = spielt), keine Emojis an Reglern (TextSlider mit Schrift im Balken).
