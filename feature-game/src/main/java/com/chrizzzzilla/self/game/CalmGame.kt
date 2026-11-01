@@ -405,7 +405,7 @@ private class CalmState(val level: Int, val abilities: CalmAbilities) {
                 thoughts += Thought(THOUGHTS[rnd.nextInt(THOUGHTS.size)], sx, sy)
             }
         }
-        val drift = 0.035f + level * 0.006f
+        val thoughtDrift = 0.035f + level * 0.006f
         val th = thoughts.iterator()
         while (th.hasNext()) {
             val g = th.next()
@@ -420,8 +420,8 @@ private class CalmState(val level: Int, val abilities: CalmAbilities) {
                 val dx = 0.5f + push - g.x
                 val dy = 0.42f - g.y
                 val len = kotlin.math.sqrt(dx * dx + dy * dy).coerceAtLeast(0.001f)
-                g.x += dx / len * drift * dt
-                g.y += dy / len * drift * dt
+                g.x += dx / len * thoughtDrift * dt
+                g.y += dy / len * thoughtDrift * dt
                 if (len < 0.07f) {
                     // Gedanke erreicht das Licht
                     g.gone = true
