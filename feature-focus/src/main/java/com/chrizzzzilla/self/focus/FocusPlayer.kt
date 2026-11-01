@@ -94,7 +94,19 @@ object FocusPlayer : FocusAudio {
     fun update(mix: AmbientMix) {
         _mix.value = mix
         engine.setMix(mix)
+        // Kein Play-Knopf: ist etwas ausgewaehlt und hoerbar, laeuft es – sonst ist Ruhe.
+        if (isAudible(mix)) play() else pause()
     }
+
+    /** Beim Oeffnen des Readers: gespeicherte Mischung automatisch spielen, wenn sie hoerbar ist. */
+    fun autoStart() {
+        if (isAudible(_mix.value)) play()
+    }
+
+    private fun isAudible(m: AmbientMix): Boolean =
+        (m.ambience != null && m.ambienceVolume > 0.01f) ||
+            (m.nature.isNotEmpty() && m.natureVolume > 0.01f) ||
+            (m.percussion != null && m.percussionVolume > 0.01f)
 
     fun loadPreset(slot: Int) {
         val preset = presets.value.getOrNull(slot - 1) ?: return

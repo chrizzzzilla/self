@@ -29,7 +29,10 @@ import com.chrizzzzilla.self.core.design.enterImmersive
 import com.chrizzzzilla.self.core.settings.AppSettings
 import com.chrizzzzilla.self.core.settings.AppTheme
 import kotlinx.coroutines.launch
+import com.chrizzzzilla.self.focus.FocusPlayer
+import org.readium.r2.navigator.OverflowableNavigator
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
+import org.readium.r2.navigator.image.ImageNavigatorFragment
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.epub.css.RsProperties
 import org.readium.r2.navigator.input.InputListener
@@ -72,7 +75,9 @@ private object TransparentCss : CssColor {
 class ReaderActivity : AppCompatActivity() {
 
     private var session: ReaderSession? = null
-    private lateinit var navigator: EpubNavigatorFragment
+    private lateinit var navigator: OverflowableNavigator
+    /** nur bei EPUBs gesetzt (Einstellungen, Durchsichtigkeit) */
+    private var epub: EpubNavigatorFragment? = null
     private lateinit var ui: ReaderUiState
     private lateinit var navigatorContainer: View
 
@@ -90,13 +95,17 @@ class ReaderActivity : AppCompatActivity() {
         session = current
 
         // WICHTIG: FragmentFactory vor super.onCreate() setzen (Readium-Vorgabe).
-        supportFragmentManager.fragmentFactory = current.navigatorFactory.createFragmentFactory(
-            initialLocator = current.lastLocator,
-            initialPreferences = current.initialSettings.toEpubPreferences(isSystemDark()),
-            configuration = EpubNavigatorFragment.Configuration(
-                readiumCssRsProperties = RsProperties(backgroundColor = TransparentCss),
-            ),
-        )
+        supportFragmentManager.fragmentFactory = if (current.isComic) {
+            ImageNavigatorFragment.createFactory(current.publication, current.lastLocator)
+        } else {
+            current.navigatorFactory.createFragmentFactory(
+                initialLocator = current.lastLocator,
+                initialPreferences = current.initialSettings.toEpubPreferences(isSystemDark()),
+                configuration = EpubNavigatorFragment.Configuration(
+                    readiumCssRsProperties = RsProperties(backgroundColor = TransparentCss),
+                ),
+            )
+        }
         super.onCreate(savedInstanceState)
         enterImmersive()
 
@@ -160,15 +169,19 @@ class ReaderActivity : AppCompatActivity() {
 
         if (savedInstanceState == null) {
             supportFragmentManager.commitNow {
-                add(R.id.reader_navigator_container, EpubNavigatorFragment::class.java, Bundle(), NAVIGATOR_TAG)
+                val cls = if (current.isComic) ImageNavigatorFragment::class.java else EpubNavigatorFragment::class.java
+                add(R.id.reader_navigator_container, cls, Bundle(), NAVIGATOR_TAG)
             }
         }
-        navigator = supportFragmentManager.findFragmentByTag(NAVIGATOR_TAG) as EpubNavigatorFragment
+        val fragment = supportFragmentManager.findFragmentByTag(NAVIGATOR_TAG)!!
+        navigator = fragment as OverflowableNavigator
+        epub = fragment as? EpubNavigatorFragment
 
         // Readium-Ansicht durchsichtig machen, sobald sie existiert
-        navigator.viewLifecycleOwnerLiveData.observe(this) { owner ->
+        fragment.viewLifecycleOwnerLiveData.observe(this) { owner ->
             if (owner != null) clearNavigatorBackgrounds()
         }
+        FocusPlayer.autoStart()
 
         // Tippen an den Raendern blaettert, Tippen in die Mitte zeigt/versteckt die Leisten.
         navigator.addInputListener(DirectionalNavigationAdapter(navigator, animatedTransition = true))
@@ -196,7 +209,7 @@ class ReaderActivity : AppCompatActivity() {
                 launch {
                     SelfCore.settings.settings.collect { settings ->
                         ui.settings.value = settings
-                        navigator.submitPreferences(settings.toEpubPreferences(isSystemDark()))
+                        epub?.submitPreferences(settings.toEpubPreferences(isSystemDark()))
                         clearNavigatorBackgrounds()
                     }
                 }
@@ -216,7 +229,7 @@ class ReaderActivity : AppCompatActivity() {
      * Beides auf durchsichtig setzen (nach jedem Einstellungs-/Seitenwechsel erneut).
      */
     private fun clearNavigatorBackgrounds() {
-        val view = navigator.view ?: return
+        val view = epub?.view ?: return
         view.post { makeTransparent(view) }
     }
 

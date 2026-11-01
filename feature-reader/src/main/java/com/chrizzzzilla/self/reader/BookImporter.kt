@@ -28,7 +28,9 @@ internal object BookImporter {
         val app = context.applicationContext
         val id = UUID.randomUUID().toString()
         val booksDir = File(app.filesDir, "books").apply { mkdirs() }
-        val file = File(booksDir, "$id.epub")
+        val sourceName = displayName(app, uri, keepExtension = true) ?: uri.lastPathSegment.orEmpty()
+        val ext = if (sourceName.endsWith(".cbz", ignoreCase = true)) "cbz" else "epub"
+        val file = File(booksDir, "$id.$ext")
 
         try {
             val input = app.contentResolver.openInputStream(uri)
@@ -58,7 +60,8 @@ internal object BookImporter {
                 .ifBlank { null }
 
             // Dasselbe Buch schon vorhanden? Dann die neue Kopie verwerfen und das alte oeffnen.
-            SelfCore.library.findSame(MediaKind.BOOK, title, creator)?.let { existing ->
+            val kind = if (publication.conformsTo(Publication.Profile.DIVINA)) MediaKind.COMIC else MediaKind.BOOK
+            SelfCore.library.findSame(kind, title, creator)?.let { existing ->
                 file.delete()
                 return@withContext existing
             }
@@ -66,13 +69,14 @@ internal object BookImporter {
             val now = System.currentTimeMillis()
             val item = LibraryItem(
                 id = id,
-                kind = MediaKind.BOOK,
+                kind = kind,
                 title = title,
                 creator = creator,
                 coverPath = saveCover(app, id, publication),
                 filePath = file.absolutePath,
                 lastOpenedAt = now,
                 addedAt = now,
+                genre = publication.metadata.subjects.firstOrNull()?.name?.takeIf { it.isNotBlank() },
             )
             SelfCore.library.add(item)
             item
@@ -97,10 +101,14 @@ internal object BookImporter {
         }.getOrNull()
     }
 
-    private fun displayName(context: Context, uri: Uri): String? = runCatching {
-        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-            ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
-            ?.removeSuffix(".epub")
-            ?.takeIf { it.isNotBlank() }
+    private fun displayName(context: Context, uri: Uri, keepExtension: Boolean = false): String? = runCatching {
+        val raw = if (uri.scheme == "file") {
+            uri.lastPathSegment
+        } else {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+        }
+        val name = if (keepExtension) raw else raw?.removeSuffix(".epub")?.removeSuffix(".cbz")
+        name?.takeIf { it.isNotBlank() }
     }.getOrNull()
 }

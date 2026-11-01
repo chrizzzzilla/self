@@ -28,7 +28,9 @@ object SelfCore {
     fun init(context: Context) {
         if (::library.isInitialized) return
         val app = context.applicationContext
-        val db = Room.databaseBuilder(app, SelfDatabase::class.java, "self.db").build()
+        val db = Room.databaseBuilder(app, SelfDatabase::class.java, "self.db")
+            .addMigrations(SelfDatabase.MIGRATION_1_2)
+            .build()
         library = LibraryRepository(db.libraryDao())
         settings = SettingsRepository(app)
     }

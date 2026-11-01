@@ -127,47 +127,52 @@ fun LibraryScreen(
         runTask { Reader.importAndOpen(context, uri) }
     }
 
-    val openFiles = { picker.launch(arrayOf("application/epub+zip", "application/octet-stream")) }
+    val openFiles = {
+        picker.launch(
+            arrayOf(
+                "application/epub+zip", "application/vnd.comicbook+zip", "application/x-cbz",
+                "application/zip", "application/octet-stream",
+            ),
+        )
+    }
     var chooser by remember { mutableStateOf(false) }
     val openPicker = { chooser = true }
     var store by remember { mutableStateOf<BookSource?>(null) }
-    LaunchedEffect(store) { onOverlayChanged(store != null) }
+    var libraryOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(store, libraryOpen, chooser) { onOverlayChanged(store != null || libraryOpen || chooser) }
 
     val sunDiameter = if (widthClass == WidthClass.COMPACT) 380.dp else 560.dp
 
     Box(modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize()) {
-            val list = items
-            when {
-                list == null -> Unit
-                list.isEmpty() -> Unit
-                else -> {
-                    val minCell = if (widthClass == WidthClass.COMPACT) 132.dp else 168.dp
-                    LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = minCell),
-                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 28.dp, bottom = sunDiameter / 2 + 48.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(20.dp),
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        items(list, key = { it.id }) { item ->
-                            BookCard(
-                                item = item,
-                                onOpen = { runTask { Reader.open(context, item) } },
-                                onLongPress = { toRemove = item },
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Arty als aufgehende Sonne am unteren Rand – antippen: Buch hinzufügen
+            // Arty als aufgehende Sonne am unteren Rand (antippen öffnet ebenfalls die Bibliothek)
             ArtySun(
-                onClick = openPicker,
+                onClick = { libraryOpen = true },
                 diameter = sunDiameter,
-                label = stringResource(R.string.reader_add_book),
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
+
+            // Bibliotheks-Knopf unten rechts (Gegenstück zum Raster-Menü links)
+            if (!libraryOpen && store == null && !chooser) {
+                LibraryButton(
+                    size = if (widthClass == WidthClass.COMPACT) 68.dp else 84.dp,
+                    onClick = { libraryOpen = true },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(34.dp),
+                )
+            }
+
+            if (libraryOpen) {
+                LibraryPanel(
+                    items = items.orEmpty(),
+                    widthClass = widthClass,
+                    onOpen = { item -> runTask { Reader.open(context, item) } },
+                    onRemove = { item -> toRemove = item },
+                    onAdd = openPicker,
+                    onClose = { libraryOpen = false },
+                )
+            }
 
             if (busy) {
                 Box(
@@ -205,7 +210,7 @@ fun LibraryScreen(
                 onDownload = { d ->
                     when {
                         d.isAdobeDrm -> scope.launch { snackbar.showSnackbar(context.getString(R.string.reader_error_adobe_drm)) }
-                        !d.isEpub && d.mimeType?.contains("octet-stream") != true ->
+                        !d.isBook && d.mimeType?.contains("octet-stream") != true ->
                             scope.launch { snackbar.showSnackbar(context.getString(R.string.reader_error_not_epub_download)) }
                         else -> {
                             store = null
@@ -244,7 +249,7 @@ fun LibraryScreen(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun BookCard(item: LibraryItem, onOpen: () -> Unit, onLongPress: () -> Unit) {
+internal fun BookCard(item: LibraryItem, onOpen: () -> Unit, onLongPress: () -> Unit) {
     val cover by produceState<ImageBitmap?>(initialValue = null, item.coverPath) {
         value = item.coverPath?.let { path ->
             withContext(Dispatchers.IO) { BitmapFactory.decodeFile(path)?.asImageBitmap() }

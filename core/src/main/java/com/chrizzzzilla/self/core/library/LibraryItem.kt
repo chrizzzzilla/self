@@ -7,7 +7,7 @@ import androidx.room.PrimaryKey
  * Art eines Bibliothekseintrags. Bewusst allgemein gehalten:
  * spaeter koennen z. B. Hoerbuecher oder Fokus-Presets dazukommen.
  */
-enum class MediaKind { BOOK }
+enum class MediaKind { BOOK, COMIC }
 
 /**
  * Ein Eintrag in der Bibliothek – nicht nur fuer Buecher gedacht.
@@ -29,4 +29,6 @@ data class LibraryItem(
     val positionJson: String? = null,
     val lastOpenedAt: Long,
     val addedAt: Long,
+    /** Genre aus den Buchdaten (erstes „subject“), falls vorhanden. */
+    val genre: String? = null,
 )

@@ -23,7 +23,9 @@ internal class ReaderSession(
     initialLocator: Locator?,
     val initialSettings: AppSettings,
 ) {
-    val navigatorFactory = EpubNavigatorFactory(publication)
+    /** Comics/Manga (CBZ) haben das Divina-Profil und brauchen den Bild-Navigator. */
+    val isComic: Boolean = publication.conformsTo(Publication.Profile.DIVINA)
+    val navigatorFactory by lazy { EpubNavigatorFactory(publication) }
 
     /** Letzte bekannte Position – fuer einen Neuaufbau der Activity. */
     @Volatile

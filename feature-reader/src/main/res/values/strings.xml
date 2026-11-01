@@ -19,7 +19,7 @@
     <string name="reader_open_in_browser">Im Browser öffnen</string>
     <string name="reader_error_download">Der Download hat nicht geklappt.</string>
     <string name="reader_error_adobe_drm">Dieses Buch hat Adobe-DRM und lässt sich in Self nicht öffnen.</string>
-    <string name="reader_error_not_epub_download">Das ist kein EPUB. Bitte die EPUB-Version herunterladen.</string>
+    <string name="reader_error_not_epub_download">Das ist kein EPUB oder CBZ. Bitte diese Version herunterladen.</string>
     <string name="reader_source_files">Eigene Datei</string>
     <string name="reader_source_files_hint">EPUB vom Gerät wählen</string>
     <string name="reader_no_browser">Kein Browser gefunden.</string>
@@ -34,7 +34,7 @@
 
     <string name="reader_error_read">Die Datei konnte nicht gelesen werden.</string>
     <string name="reader_error_open">Das Buch konnte nicht geöffnet werden. Ist es ein DRM-freies EPUB?</string>
-    <string name="reader_error_not_epub">Das ist kein EPUB-Buch.</string>
+    <string name="reader_error_not_epub">Dieses Format wird nicht unterstützt (EPUB oder CBZ).</string>
     <string name="reader_error_missing">Die Buchdatei fehlt. Bitte das Buch neu hinzufügen.</string>
     <string name="reader_error_generic">Da ist etwas schiefgelaufen.</string>
 

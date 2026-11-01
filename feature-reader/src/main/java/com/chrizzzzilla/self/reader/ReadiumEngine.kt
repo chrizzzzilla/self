@@ -59,7 +59,7 @@ internal object ReadiumEngine {
                 throw ReaderException(R.string.reader_error_open)
             }
 
-        if (!publication.conformsTo(Publication.Profile.EPUB)) {
+        if (!publication.conformsTo(Publication.Profile.EPUB) && !publication.conformsTo(Publication.Profile.DIVINA)) {
             publication.close()
             throw ReaderException(R.string.reader_error_not_epub)
         }

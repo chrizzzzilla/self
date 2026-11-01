@@ -32,6 +32,8 @@
                 <data android:scheme="content" />
                 <data android:scheme="file" />
                 <data android:mimeType="application/epub+zip" />
+                <data android:mimeType="application/vnd.comicbook+zip" />
+                <data android:mimeType="application/x-cbz" />
             </intent-filter>
 
             <!-- „Öffnen mit“: manche Apps melden EPUBs nur als Binaerdatei, dann zaehlt die Endung -->
@@ -47,6 +49,9 @@
                 <data android:pathPattern=".*\\..*\\.epub" />
                 <data android:pathPattern=".*\\..*\\..*\\.epub" />
                 <data android:pathPattern=".*\\.EPUB" />
+                <data android:pathPattern=".*\\.cbz" />
+                <data android:pathPattern=".*\\..*\\.cbz" />
+                <data android:pathPattern=".*\\.CBZ" />
             </intent-filter>
         </activity>
     </application>

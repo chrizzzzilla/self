@@ -4,7 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,6 +39,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import kotlinx.coroutines.launch
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -165,8 +170,20 @@ fun AmbientPanel(onClose: () -> Unit, onFocusMode: (() -> Unit)? = null) {
         BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 20.dp)) {
             val wide = maxWidth > 760.dp
             Column(Modifier.fillMaxSize()) {
-                // Kopf: Schliessen · Visualizer · Play
+                // Kopf: Visualizer · Presets · Speichern · Schliessen
                 Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Visualizer(playing, mix, Modifier.weight(1f).height(52.dp).padding(end = 24.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        for (slot in 1..AmbientStore.PRESET_COUNT) {
+                            val filled = presets.getOrNull(slot - 1) != null
+                            Pill(text = "$slot", selected = active == slot, enabled = filled) { FocusPlayer.loadPreset(slot) }
+                        }
+                        SaveButton {
+                            val slot = active ?: ((presets.indexOfFirst { it == null }.takeIf { it >= 0 } ?: 0) + 1)
+                            FocusPlayer.savePreset(slot)
+                        }
+                    }
+                    Spacer(Modifier.width(18.dp))
                     Box(
                         Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onClose),
                         contentAlignment = Alignment.Center,
@@ -176,36 +193,8 @@ fun AmbientPanel(onClose: () -> Unit, onFocusMode: (() -> Unit)? = null) {
                             drawLine(AmbientColors.Light, Offset(size.width, 0f), Offset(0f, size.height), strokeWidth = 1.6f * density, cap = StrokeCap.Round)
                         }
                     }
-                    Visualizer(playing, mix, Modifier.weight(1f).height(56.dp).padding(horizontal = 20.dp))
-                    FilledIconButton(
-                        onClick = { FocusPlayer.toggle() },
-                        modifier = Modifier.size(56.dp),
-                        colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFF1E2A55), contentColor = AmbientColors.Light),
-                    ) {
-                        Icon(
-                            painterResource(if (playing) R.drawable.focus_ic_pause else R.drawable.focus_ic_play),
-                            contentDescription = if (playing) "Pause" else "Abspielen",
-                        )
-                    }
                 }
-                // Presets
-                Row(Modifier.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("PRESETS", style = labelStyle)
-                    Spacer(Modifier.width(6.dp))
-                    for (slot in 1..AmbientStore.PRESET_COUNT) {
-                        val filled = presets.getOrNull(slot - 1) != null
-                        Pill(text = "$slot", selected = active == slot, enabled = filled) { FocusPlayer.loadPreset(slot) }
-                    }
-                    Spacer(Modifier.width(6.dp))
-                    Pill(text = "PRESET SPEICHERN", selected = false, enabled = true, wide = true) {
-                        val slot = active ?: ((presets.indexOfFirst { it == null }.takeIf { it >= 0 } ?: 0) + 1)
-                        FocusPlayer.savePreset(slot)
-                    }
-                    if (onFocusMode != null) {
-                        Spacer(Modifier.weight(1f))
-                        Pill(text = "NUR AMBIENTE", selected = false, enabled = true, wide = true) { onFocusMode() }
-                    }
-                }
+                Spacer(Modifier.height(10.dp))
 
                 val left: @Composable (Modifier) -> Unit = { m ->
                     Column(m.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -229,8 +218,8 @@ fun AmbientPanel(onClose: () -> Unit, onFocusMode: (() -> Unit)? = null) {
                         SoundSection(
                             "PERCUSSION", mix.percussionVolume, { update(mix.copy(percussionVolume = it)) },
                             below = {
-                                IconSlider("🐢", "🐇", mix.percussionSpeed) { update(mix.copy(percussionSpeed = it)) }
-                                IconSlider("🌑", "☀️", mix.percussionTone) { update(mix.copy(percussionTone = it)) }
+                                TextSlider("TEMPO", mix.percussionSpeed, valueText = "${mix.percussionBpm.toInt()} BPM") { update(mix.copy(percussionSpeed = it)) }
+                                TextSlider("KLANG", mix.percussionTone, valueText = if (mix.percussionTone < 0.5f) "dunkel" else "hell") { update(mix.copy(percussionTone = it)) }
                             },
                         ) {
                             Percussion.entries.forEach { p ->
@@ -264,8 +253,8 @@ fun AmbientPanel(onClose: () -> Unit, onFocusMode: (() -> Unit)? = null) {
                         val shownHour = if (mix.realTime) deviceHour() else mix.hour
                         val hh = shownHour.toInt() % 24
                         val mm = ((shownHour - shownHour.toInt()) * 60).toInt()
-                        LineSlider(
-                            "TAGESZEIT · %02d:%02d".format(hh, mm), "0 Uhr", "24 Uhr", shownHour / 24f,
+                        TextSlider(
+                            "TAGESZEIT", shownHour / 24f, valueText = "%02d:%02d".format(hh, mm),
                             enabled = !mix.realTime,
                         ) { update(mix.copy(hour = it * 24f)) }
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -303,6 +292,46 @@ fun AmbientPanel(onClose: () -> Unit, onFocusMode: (() -> Unit)? = null) {
 // Bausteine
 // ------------------------------------------------------------------------------------------
 
+/**
+ * Speichern-Symbol im App-Stil: feine Linie, ein Lesezeichen mit kleinem Lichtpunkt.
+ * Speichert die aktuelle Mischung ins aktive (oder erste freie) Preset; kurzes Aufleuchten als Bestaetigung.
+ */
+@Composable
+private fun SaveButton(onClick: () -> Unit) {
+    val flash = remember { androidx.compose.animation.core.Animatable(0f) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val shape = RoundedCornerShape(50)
+    Box(
+        Modifier
+            .size(36.dp)
+            .clip(shape)
+            .background(Color(0x14FFFFFF))
+            .border(1.dp, AmbientColors.Light.copy(alpha = 0.18f), shape)
+            .clickable {
+                onClick()
+                scope.launch { flash.snapTo(1f); flash.animateTo(0f, androidx.compose.animation.core.tween(700)) }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(16.dp)) {
+            val w = size.width
+            val h = size.height
+            val p = Path().apply {
+                moveTo(w * 0.2f, h * 0.05f)
+                lineTo(w * 0.8f, h * 0.05f)
+                lineTo(w * 0.8f, h * 0.95f)
+                lineTo(w * 0.5f, h * 0.7f)
+                lineTo(w * 0.2f, h * 0.95f)
+                close()
+            }
+            drawPath(p, AmbientColors.Light, style = Stroke(width = 1.4f * density, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+            val c = Offset(w * 0.5f, h * 0.36f)
+            drawCircle(AmbientColors.Arty.copy(alpha = 0.35f + 0.65f * flash.value), radius = w * (0.12f + 0.25f * flash.value), center = c, blendMode = BlendMode.Plus)
+            drawCircle(AmbientColors.ArtyText, radius = w * 0.08f, center = c)
+        }
+    }
+}
+
 @Composable
 private fun Pill(text: String, selected: Boolean, enabled: Boolean, wide: Boolean = false, onClick: () -> Unit) {
     val shape = RoundedCornerShape(50)
@@ -337,23 +366,65 @@ private fun SoundSection(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) { items() }
-        IconSlider("🔈", "🔊", volume, onChange = onVolume)
+        TextSlider("LAUTSTÄRKE", volume, valueText = "${(volume * 100).toInt()} %", onChange = onVolume)
         below?.invoke()
     }
 }
 
-/** Waagerechter Regler mit Symbolen statt Text an den Enden; grosser Daumen, gut zu greifen. */
+/**
+ * Regler als Balken mit Schrift darin: links die Bezeichnung, rechts der Wert.
+ * Ueber dem blauen (gefuellten) Teil ist die Schrift dunkel, ueber dem grauen hell – immer lesbar.
+ * Tippen oder Ziehen setzt den Wert.
+ */
 @Composable
-private fun IconSlider(low: String, high: String, value: Float, modifier: Modifier = Modifier, onChange: (Float) -> Unit) {
-    Row(modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(low, fontSize = 18.sp, modifier = Modifier.width(32.dp), textAlign = TextAlign.Center)
-        Slider(
-            value = value.coerceIn(0f, 1f),
-            onValueChange = onChange,
-            modifier = Modifier.weight(1f),
-            colors = SliderDefaults.colors(thumbColor = AmbientColors.Light, activeTrackColor = AmbientColors.Arty, inactiveTrackColor = Color(0x33FFFFFF)),
-        )
-        Text(high, fontSize = 18.sp, modifier = Modifier.width(32.dp), textAlign = TextAlign.Center)
+private fun TextSlider(
+    label: String,
+    value: Float,
+    modifier: Modifier = Modifier,
+    valueText: String? = null,
+    enabled: Boolean = true,
+    onChange: (Float) -> Unit,
+) {
+    val measurer = rememberTextMeasurer()
+    val change by rememberUpdatedState(onChange)
+    val on by rememberUpdatedState(enabled)
+    val style = TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Medium, fontSize = 11.sp, letterSpacing = 2.5.sp)
+    Canvas(
+        modifier
+            .fillMaxWidth()
+            .height(42.dp)
+            .pointerInput(Unit) {
+                detectTapGestures { if (on) change((it.x / size.width).coerceIn(0f, 1f)) }
+            }
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures { c, _ -> if (on) change((c.position.x / size.width).coerceIn(0f, 1f)) }
+            },
+    ) {
+        val v = value.coerceIn(0f, 1f)
+        val r = androidx.compose.ui.geometry.CornerRadius(size.height / 2f)
+        val fade = if (enabled) 1f else 0.45f
+        drawRoundRect(Color(0x24FFFFFF), cornerRadius = r, alpha = fade)
+        val fw = size.width * v
+        clipRect(right = fw) {
+            drawRoundRect(
+                Brush.horizontalGradient(listOf(AmbientColors.Arty, AmbientColors.ArtyText)),
+                cornerRadius = r,
+                alpha = fade,
+            )
+        }
+        val pad = 18.dp.toPx()
+        val labelLayout = measurer.measure(label, style)
+        val ly = (size.height - labelLayout.size.height) / 2f
+        val dark = Color(0xFF0B1230)
+        val light = AmbientColors.Light
+        clipRect(right = fw) { drawText(labelLayout, color = dark, topLeft = Offset(pad, ly), alpha = fade) }
+        clipRect(left = fw) { drawText(labelLayout, color = light, topLeft = Offset(pad, ly), alpha = fade) }
+        if (valueText != null) {
+            val vl = measurer.measure(valueText, style.copy(letterSpacing = 1.sp))
+            val vx = size.width - pad - vl.size.width
+            clipRect(right = fw) { drawText(vl, color = dark, topLeft = Offset(vx, ly), alpha = fade) }
+            clipRect(left = fw) { drawText(vl, color = light.copy(alpha = 0.75f), topLeft = Offset(vx, ly), alpha = fade) }
+        }
     }
 }
 

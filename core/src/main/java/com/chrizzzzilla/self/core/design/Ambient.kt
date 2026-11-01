@@ -304,6 +304,11 @@ private class Cam(yaw: Float, pitch: Float, private val w: Float, private val h:
 // Arty: blauer Partikelschwarm, schwebt wie eine Wolke, sammelt sich beim Erscheinen
 // ==========================================================================================
 
+/** Merkt sich (fuer diesen App-Start), ob Arty seinen Auftritt schon hatte. */
+private object ArtyIntro {
+    @Volatile var played = false
+}
+
 private class Swarm(
     val lx: FloatArray, val ly: FloatArray, val lz: FloatArray,
     val bx: FloatArray, val by: FloatArray, val bz: FloatArray,
@@ -346,8 +351,14 @@ fun ArtySwarm(
     val white = rememberSprites(if (onLight) Color(0xFF1E3A9A) else AmbientColors.Light)
     val blend = if (onLight) BlendMode.SrcOver else BlendMode.Plus
     val swarm = remember(particles) { makeSwarm(particles, 150f, 11) }
-    val appear = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { appear.animateTo(1f, tween(3600)) }
+    // Der Auftritt (Partikel sammeln sich) nur einmal pro App-Start, danach steht Arty sofort da.
+    val appear = remember { Animatable(if (ArtyIntro.played) 1f else 0f) }
+    LaunchedEffect(Unit) {
+        if (!ArtyIntro.played) {
+            ArtyIntro.played = true
+            appear.animateTo(1f, tween(3600))
+        }
+    }
 
     Canvas(modifier) {
         val s = time.floatValue

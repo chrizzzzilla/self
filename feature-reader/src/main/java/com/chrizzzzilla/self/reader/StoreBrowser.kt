@@ -76,8 +76,11 @@ internal class StoreDownload(
     val fileName: String = URLUtil.guessFileName(url, contentDisposition, mimeType)
     val isAdobeDrm: Boolean =
         fileName.endsWith(".acsm", ignoreCase = true) || mimeType?.contains("adept", ignoreCase = true) == true
-    val isEpub: Boolean =
-        fileName.contains(".epub", ignoreCase = true) || mimeType?.contains("epub", ignoreCase = true) == true
+    /** EPUB oder Comic-Archiv (CBZ) */
+    val isBook: Boolean =
+        fileName.contains(".epub", ignoreCase = true) || mimeType?.contains("epub", ignoreCase = true) == true ||
+            fileName.endsWith(".cbz", ignoreCase = true) || mimeType?.contains("comicbook", ignoreCase = true) == true ||
+            mimeType?.contains("cbz", ignoreCase = true) == true
 }
 
 /**
@@ -204,7 +207,8 @@ internal suspend fun downloadToCache(context: Context, d: StoreDownload): File =
         break
     }
     val connection = conn ?: throw ReaderException(R.string.reader_error_download)
-    val file = File(context.cacheDir, "download-${System.currentTimeMillis()}.epub")
+    val ext = if (d.fileName.endsWith(".cbz", ignoreCase = true)) "cbz" else "epub"
+    val file = File(context.cacheDir, "download-${System.currentTimeMillis()}.$ext")
     try {
         connection.inputStream.use { input -> file.outputStream().use { input.copyTo(it) } }
     } catch (e: Exception) {
