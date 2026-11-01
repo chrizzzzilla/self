@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Fenster-Theme; die eigentlichen Farben kommen aus Compose (SelfTheme). -->
+    <style name="Theme.Self" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#FBFBF9</item>
+    </style>
+</resources>

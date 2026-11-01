@@ -1,0 +1,81 @@
+name: APK bauen
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write # noetig, um das GitHub-Release mit der APK anzulegen
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Code holen
+        uses: actions/checkout@v7
+
+      - name: Java 21 einrichten
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # Prueft ausserdem, dass gradle-wrapper.jar ein offizielles Gradle-Jar ist.
+      - name: Gradle einrichten
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Signatur-Schluessel bereitstellen
+        env:
+          KEYSTORE_BASE64: ${{ secrets.SELF_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.SELF_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.SELF_KEY_ALIAS }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/self-release.p12"
+            {
+              echo "SELF_KEYSTORE_PATH=$RUNNER_TEMP/self-release.p12"
+              echo "SELF_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+              echo "SELF_KEY_ALIAS=$KEY_ALIAS"
+            } >> "$GITHUB_ENV"
+            echo "Fester Release-Schluessel wird verwendet."
+          else
+            echo "::warning::Kein Release-Schluessel hinterlegt – APK wird mit Debug-Schluessel signiert (Updates nicht moeglich)."
+          fi
+
+      - name: APK bauen
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace assembleRelease
+
+      - name: APK umbenennen
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/release/app-release.apk "out/self-0.1.${{ github.run_number }}.apk"
+          ls -l out
+
+      - name: APK als Artifact hochladen
+        uses: actions/upload-artifact@v7
+        with:
+          name: self-0.1.${{ github.run_number }}
+          path: out/*.apk
+          if-no-files-found: error
+
+      # Release nur bei Push auf main – Obtainium holt sich von hier die Updates.
+      - name: GitHub-Release anlegen
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          gh release create "v0.1.${{ github.run_number }}" out/*.apk \
+            --title "Self 0.1.${{ github.run_number }}" \
+            --notes "Automatischer Build von ${GITHUB_SHA::7}: ${COMMIT_MSG%%$'\n'*}" \
+            --target "$GITHUB_SHA"

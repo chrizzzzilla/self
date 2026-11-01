@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="game_title">Spiel</string>
+    <string name="game_placeholder">Hier entsteht ein kleines, ruhiges Spiel passend zur Stimmung der App.</string>
+    <string name="game_soon">Kommt in einer späteren Version.</string>
+</resources>

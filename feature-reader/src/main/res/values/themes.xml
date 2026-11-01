@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- AppCompat-Theme, weil der Readium-Navigator auf AppCompat-Komponenten aufbaut. -->
+    <style name="Theme.Self.Reader" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+</resources>

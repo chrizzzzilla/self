@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="focus_title">Fokus</string>
+    <string name="focus_placeholder">Hier entsteht der Fokus-Bereich: generative Musik direkt auf dem Gerät, ruhige animierte Hintergründe, Fokus- und Sleep-Timer.</string>
+    <string name="focus_soon">Kommt in einer späteren Version.</string>
+</resources>

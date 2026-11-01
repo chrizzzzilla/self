@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- App-Icon: aufgeschlagenes Buch mit Mondsichel (Lesen + Ruhe). Sichere Zone: Mitte 66 dp. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- linke Buchseite -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,40 C38,37 46,38 52,42 L52,74 C46,70 38,69 30,72 Z" />
+    <!-- rechte Buchseite -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M56,42 C62,38 70,37 78,40 L78,72 C70,69 62,70 56,74 Z" />
+    <!-- Mondsichel ueber dem Buch -->
+    <path
+        android:fillColor="#F6D58E"
+        android:pathData="M58,22 C52,22 47,27 47,33 C47,34 47.2,35 47.5,36 C49,32 52.5,29.5 56.5,29.5 C59,29.5 61.2,30.4 63,31.9 C62,26.3 60.5,22.6 58,22 Z" />
+</vector>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!--
+            Eigene Activity fuer den Reader: Readium liefert den EPUB-Navigator als Fragment.
+            configChanges: Drehen des Geraets baut die Activity nicht neu auf,
+            der Navigator passt das Layout (z. B. Doppelspalte im Querformat) selbst an.
+        -->
+        <activity
+            android:name="com.chrizzzzilla.self.reader.ReaderActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation"
+            android:theme="@style/Theme.Self.Reader" />
+    </application>
+</manifest>

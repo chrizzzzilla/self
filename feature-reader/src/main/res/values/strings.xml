@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_library_title">Bibliothek</string>
+    <string name="reader_add_book">Buch hinzufügen</string>
+    <string name="reader_empty_title">Noch keine Bücher</string>
+    <string name="reader_empty_text">Tippe auf „Buch hinzufügen“ oder öffne ein EPUB direkt nach dem Download mit dieser App.</string>
+    <string name="reader_long_press_hint">Lange drücken, um ein Buch zu entfernen</string>
+    <string name="reader_untitled">Ohne Titel</string>
+    <string name="reader_progress_percent">%1$d %%</string>
+    <string name="reader_opening">Wird geöffnet …</string>
+
+    <string name="reader_remove_title">Aus der Bibliothek entfernen?</string>
+    <string name="reader_remove_text">„%1$s“ wird samt Leseposition aus der App gelöscht.</string>
+    <string name="reader_remove_confirm">Entfernen</string>
+    <string name="reader_cancel">Abbrechen</string>
+
+    <string name="reader_error_read">Die Datei konnte nicht gelesen werden.</string>
+    <string name="reader_error_open">Das Buch konnte nicht geöffnet werden. Ist es ein DRM-freies EPUB?</string>
+    <string name="reader_error_not_epub">Das ist kein EPUB-Buch.</string>
+    <string name="reader_error_missing">Die Buchdatei fehlt. Bitte das Buch neu hinzufügen.</string>
+    <string name="reader_error_generic">Da ist etwas schiefgelaufen.</string>
+
+    <string name="reader_back">Zurück</string>
+    <string name="reader_toc">Inhaltsverzeichnis</string>
+    <string name="reader_display">Darstellung</string>
+    <string name="reader_music">Fokus-Musik</string>
+    <string name="reader_music_later">Fokus-Musik kommt in einer späteren Version.</string>
+    <string name="reader_chapter_fallback">Kapitel %1$d</string>
+
+    <string name="reader_font_size">Schriftgröße</string>
+    <string name="reader_font_smaller">Schrift kleiner</string>
+    <string name="reader_font_bigger">Schrift größer</string>
+    <string name="reader_theme">Farbmodus</string>
+    <string name="reader_theme_system">System</string>
+    <string name="reader_theme_light">Hell</string>
+    <string name="reader_theme_dark">Dunkel</string>
+    <string name="reader_theme_sepia">Sepia</string>
+</resources>
