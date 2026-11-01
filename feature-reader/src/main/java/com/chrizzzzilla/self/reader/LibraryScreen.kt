@@ -129,7 +129,7 @@ fun LibraryScreen(
     val openFiles = { picker.launch(arrayOf("application/epub+zip", "application/octet-stream")) }
     var chooser by remember { mutableStateOf(false) }
     val openPicker = { chooser = true }
-    val noBrowser = stringResource(R.string.reader_no_browser)
+    var store by remember { mutableStateOf<BookSource?>(null) }
 
     Box(modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize()) {
@@ -185,19 +185,42 @@ fun LibraryScreen(
 
         if (chooser) {
             SourceChooser(
-                onStore = {
+                compact = widthClass == WidthClass.COMPACT,
+                onSource = {
                     chooser = false
-                    // Shop im Browser: Anmeldung bleibt dort gespeichert, Self speichert keine Passwörter.
-                    val opened = runCatching {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(STORE_URL)))
-                    }.isSuccess
-                    if (!opened) scope.launch { snackbar.showSnackbar(noBrowser) }
+                    store = it
                 },
                 onFiles = {
                     chooser = false
                     openFiles()
                 },
                 onDismiss = { chooser = false },
+            )
+        }
+
+        // Eingebauter Browser: Download eines EPUBs → direkt in die Bibliothek und öffnen
+        store?.let { src ->
+            StoreBrowser(
+                source = src,
+                onClose = { store = null },
+                onDownload = { d ->
+                    when {
+                        d.isAdobeDrm -> scope.launch { snackbar.showSnackbar(context.getString(R.string.reader_error_adobe_drm)) }
+                        !d.isEpub && d.mimeType?.contains("octet-stream") != true ->
+                            scope.launch { snackbar.showSnackbar(context.getString(R.string.reader_error_not_epub_download)) }
+                        else -> {
+                            store = null
+                            runTask {
+                                val file = downloadToCache(context, d)
+                                try {
+                                    Reader.importAndOpen(context, Uri.fromFile(file))
+                                } finally {
+                                    file.delete()
+                                }
+                            }
+                        }
+                    }
+                },
             )
         }
     }
@@ -219,9 +242,6 @@ fun LibraryScreen(
         )
     }
 }
-
-/** Orell Füssli (Tolino-Partner) – dort im Kundenkonto die gekauften E-Books herunterladen. */
-private const val STORE_URL = "https://www.orellfuessli.ch/"
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

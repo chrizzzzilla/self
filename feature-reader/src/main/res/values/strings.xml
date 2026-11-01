@@ -2,8 +2,18 @@
 <resources>
     <string name="reader_library_title">Bibliothek</string>
     <string name="reader_add_book">Buch hinzufügen</string>
-    <string name="reader_source_store">Orell Füssli · Tolino</string>
-    <string name="reader_source_store_hint">Im Browser anmelden, EPUB laden, mit Self öffnen</string>
+    <string name="reader_source_beam">Beam</string>
+    <string name="reader_source_beam_hint">E-Books ohne Kopierschutz kaufen</string>
+    <string name="reader_source_libreture">Libreture</string>
+    <string name="reader_source_libreture_hint">Verzeichnis DRM-freier Buchläden</string>
+    <string name="reader_source_gutenberg">Project Gutenberg</string>
+    <string name="reader_source_gutenberg_hint">Klassiker gratis, auch auf Deutsch</string>
+    <string name="reader_source_standard">Standard Ebooks</string>
+    <string name="reader_source_standard_hint">Schön gesetzte Klassiker gratis (Englisch)</string>
+    <string name="reader_open_in_browser">Im Browser öffnen</string>
+    <string name="reader_error_download">Der Download hat nicht geklappt.</string>
+    <string name="reader_error_adobe_drm">Dieses Buch hat Adobe-DRM und lässt sich in Self nicht öffnen.</string>
+    <string name="reader_error_not_epub_download">Das ist kein EPUB. Bitte die EPUB-Version herunterladen.</string>
     <string name="reader_source_files">Eigene Datei</string>
     <string name="reader_source_files_hint">EPUB vom Gerät wählen</string>
     <string name="reader_no_browser">Kein Browser gefunden.</string>

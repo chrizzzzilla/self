@@ -11,13 +11,14 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -34,48 +35,61 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.chrizzzzilla.self.core.design.AmbientColors
 import com.chrizzzzilla.self.core.design.Manrope
 
 /**
- * Woher kommt das Buch? Zwei Felder federn auf:
- *  - Orell Füssli · Tolino → Website im Browser (dort angemeldet bleiben, EPUB laden, „Öffnen mit Self“)
- *  - Eigene Datei → Dateiauswahl
+ * Woher kommt das Buch? Felder federn nacheinander auf:
+ * DRM-freie Shops/Bibliotheken (oeffnen im eingebauten Browser) und „Eigene Datei“.
  * Tippen daneben schliesst.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun SourceChooser(
-    onStore: () -> Unit,
+    compact: Boolean,
+    onSource: (BookSource) -> Unit,
     onFiles: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val p = remember { Animatable(0f) }
     LaunchedEffect(Unit) { p.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMediumLow)) }
+    val tile = if (compact) 150.dp else 184.dp
 
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color(0xFF05060A).copy(alpha = 0.55f * p.value.coerceIn(0f, 1f)))
+            .background(Color(0xFF05060A).copy(alpha = 0.6f * p.value.coerceIn(0f, 1f)))
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
         contentAlignment = Alignment.Center,
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            SourceTile(
-                icon = R.drawable.reader_ic_globe,
-                title = stringResource(R.string.reader_source_store),
-                hint = stringResource(R.string.reader_source_store_hint),
-                progress = p.value,
-                delay = 0f,
-                onClick = onStore,
-            )
+        FlowRow(
+            modifier = Modifier
+                .widthIn(max = tile * 3 + 40.dp)
+                .padding(24.dp),
+            horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            BookSource.entries.forEachIndexed { i, src ->
+                SourceTile(
+                    icon = src.icon,
+                    title = stringResource(src.title),
+                    hint = stringResource(src.hint),
+                    size = tile,
+                    progress = p.value,
+                    delay = i * 0.06f,
+                    onClick = { onSource(src) },
+                )
+            }
             SourceTile(
                 icon = R.drawable.reader_ic_folder,
                 title = stringResource(R.string.reader_source_files),
                 hint = stringResource(R.string.reader_source_files_hint),
+                size = tile,
                 progress = p.value,
-                delay = 0.1f,
+                delay = BookSource.entries.size * 0.06f,
                 onClick = onFiles,
             )
         }
@@ -87,6 +101,7 @@ private fun SourceTile(
     @DrawableRes icon: Int,
     title: String,
     hint: String,
+    size: Dp,
     progress: Float,
     delay: Float,
     onClick: () -> Unit,
@@ -101,39 +116,33 @@ private fun SourceTile(
                 scaleY = 0.6f + 0.4f * local
                 translationY = (1f - local) * 40f * density
             }
-            .width(200.dp)
-            .height(200.dp)
+            .size(size)
             .clip(shape)
             .background(Color(0xF0141519))
             .border(1.dp, AmbientColors.Light.copy(alpha = 0.10f), shape)
             .clickable(onClick = onClick)
-            .padding(18.dp),
+            .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(painterResource(icon), contentDescription = null, tint = AmbientColors.ArtyText, modifier = Modifier.size(34.dp))
-        Spacer(Modifier.height(14.dp))
+        Icon(painterResource(icon), contentDescription = null, tint = AmbientColors.ArtyText, modifier = Modifier.size(30.dp))
+        Spacer(Modifier.height(12.dp))
         Text(
             title.uppercase(),
             textAlign = TextAlign.Center,
             style = TextStyle(
                 fontFamily = Manrope,
                 fontWeight = FontWeight.Medium,
-                fontSize = 12.sp,
-                letterSpacing = 2.5.sp,
+                fontSize = 11.sp,
+                letterSpacing = 2.2.sp,
                 color = AmbientColors.Light,
             ),
         )
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
         Text(
             hint,
             textAlign = TextAlign.Center,
-            style = TextStyle(
-                fontFamily = Manrope,
-                fontWeight = FontWeight.Light,
-                fontSize = 12.sp,
-                color = AmbientColors.Muted,
-            ),
+            style = TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Light, fontSize = 11.sp, color = AmbientColors.Muted),
         )
     }
 }
