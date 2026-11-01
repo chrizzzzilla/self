@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -32,6 +33,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
@@ -497,6 +499,48 @@ fun ArtyMini(onClick: () -> Unit, modifier: Modifier = Modifier, size: Dp = 84.d
             },
     ) {
         ArtySwarm(Modifier.fillMaxSize(), particles = 260, pulse = { pulse.value })
+    }
+}
+
+
+/**
+ * Arty als aufgehende Sonne: grosser Schwarm, dessen Mitte genau auf dem unteren Rand liegt –
+ * nur die obere Haelfte ist zu sehen. Darueber optional eine Schreibmaschinen-Beschriftung.
+ * Antippen laesst ihn aufleuchten und ruft [onClick] auf.
+ */
+@Composable
+fun ArtySun(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    diameter: Dp = 420.dp,
+    label: String? = null,
+) {
+    val pulse = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        if (label != null) {
+            TypewriterLabel(label.uppercase(), startDelayMs = 2200)
+            Spacer(Modifier.height(4.dp))
+        }
+        // sichtbar ist nur die obere Haelfte; der Rest liegt unter dem Bildschirmrand
+        Box(
+            Modifier
+                .size(width = diameter, height = diameter / 2)
+                .clipToBounds()
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                    scope.launch { pulse.snapTo(1f); pulse.animateTo(0f, tween(900)) }
+                    onClick()
+                },
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            ArtySwarm(
+                Modifier
+                    .requiredSize(diameter)
+                    .graphicsLayer { translationY = diameter.toPx() / 4f },
+                particles = 1100,
+                pulse = { pulse.value },
+            )
+        }
     }
 }
 

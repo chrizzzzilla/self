@@ -59,8 +59,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.chrizzzzilla.self.core.SelfCore
-import com.chrizzzzilla.self.core.design.ArtyButton
-import com.chrizzzzilla.self.core.design.ArtyMini
+import com.chrizzzzilla.self.core.design.ArtySun
 import com.chrizzzzilla.self.core.design.WidthClass
 import com.chrizzzzilla.self.core.library.LibraryItem
 import kotlinx.coroutines.CancellationException
@@ -131,23 +130,19 @@ fun LibraryScreen(
     val openPicker = { chooser = true }
     var store by remember { mutableStateOf<BookSource?>(null) }
 
+    val sunDiameter = if (widthClass == WidthClass.COMPACT) 380.dp else 560.dp
+
     Box(modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize()) {
             val list = items
             when {
                 list == null -> Unit
-                // Noch nichts da: nur Arty in der Mitte, darunter tippt sich "Buch hinzufügen"
-                list.isEmpty() -> ArtyButton(
-                    label = stringResource(R.string.reader_add_book),
-                    onClick = openPicker,
-                    orbSize = if (widthClass == WidthClass.COMPACT) 260.dp else 340.dp,
-                    modifier = Modifier.align(Alignment.Center),
-                )
+                list.isEmpty() -> Unit
                 else -> {
                     val minCell = if (widthClass == WidthClass.COMPACT) 132.dp else 168.dp
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = minCell),
-                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 28.dp, bottom = 120.dp),
+                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 28.dp, bottom = sunDiameter / 2 + 48.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         verticalArrangement = Arrangement.spacedBy(20.dp),
                         modifier = Modifier.fillMaxSize(),
@@ -160,15 +155,16 @@ fun LibraryScreen(
                             )
                         }
                     }
-                    // Weitere Buecher: kleiner Arty unten rechts
-                    ArtyMini(
-                        onClick = openPicker,
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(16.dp),
-                    )
                 }
             }
+
+            // Arty als aufgehende Sonne am unteren Rand – antippen: Buch hinzufügen
+            ArtySun(
+                onClick = openPicker,
+                diameter = sunDiameter,
+                label = stringResource(R.string.reader_add_book),
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
 
             if (busy) {
                 Box(
