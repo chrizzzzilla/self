@@ -119,10 +119,7 @@ internal fun StoreBrowser(
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onClose) {
-                Icon(painterResource(R.drawable.reader_ic_back), stringResource(R.string.reader_back), tint = AmbientColors.Light)
-            }
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.weight(1f).padding(start = 16.dp)) {
                 Text(
                     stringResource(source.title).uppercase(),
                     style = TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Medium, fontSize = 12.sp, letterSpacing = 2.5.sp, color = AmbientColors.Light),
@@ -138,6 +135,9 @@ internal fun StoreBrowser(
             }
             IconButton(onClick = { web?.url?.let { openExternal(context, it) } }) {
                 Icon(painterResource(R.drawable.reader_ic_globe), stringResource(R.string.reader_open_in_browser), tint = AmbientColors.Light)
+            }
+            IconButton(onClick = onClose) {
+                Icon(painterResource(R.drawable.reader_ic_back), stringResource(R.string.reader_back), tint = AmbientColors.Light)
             }
         }
         Box(Modifier.fillMaxWidth().height(2.dp)) {
