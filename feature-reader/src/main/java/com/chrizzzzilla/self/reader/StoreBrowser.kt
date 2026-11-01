@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Base64
 import android.webkit.CookieManager
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.JavascriptInterface
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
@@ -107,6 +108,8 @@ internal fun StoreBrowser(
     var web by remember { mutableStateOf<WebView?>(null) }
     var progress by remember { mutableIntStateOf(0) }
     var pageTitle by remember { mutableStateOf("") }
+    var webKey by remember { mutableIntStateOf(0) }
+    var notice by remember { mutableStateOf<String?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
 
     BackHandler {
@@ -157,6 +160,14 @@ internal fun StoreBrowser(
                 )
             }
         }
+        notice?.let {
+            Text(
+                it,
+                style = TextStyle(fontFamily = Manrope, fontSize = 13.sp, color = AmbientColors.Gold),
+                modifier = Modifier.fillMaxWidth().background(Color(0xFF15161C)).padding(horizontal = 20.dp, vertical = 10.dp),
+            )
+        }
+        androidx.compose.runtime.key(webKey) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
@@ -169,7 +180,11 @@ internal fun StoreBrowser(
                     settings.useWideViewPort = true
                     CookieManager.getInstance().setAcceptCookie(true)
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                    webViewClient = SecureUpgradeClient()
+                    webViewClient = SecureUpgradeClient {
+                        notice = "Die Seite ist abgestürzt und wurde neu geladen. Bücher mit Kopierschutz kann Self nicht übernehmen – lies sie hier im Webreader."
+                        web = null
+                        webKey++
+                    }
                     webChromeClient = object : WebChromeClient() {
                         override fun onProgressChanged(view: WebView?, newProgress: Int) { progress = newProgress }
                         override fun onReceivedTitle(view: WebView?, title: String?) { pageTitle = title.orEmpty() }
@@ -213,6 +228,7 @@ internal fun StoreBrowser(
                 Handler(Looper.getMainLooper()).post { runCatching { w.destroy() } }
             },
         )
+        }
     }
 }
 
@@ -221,9 +237,20 @@ internal fun StoreBrowser(
  * unverschluesselte Verbindungen (ERR_CLEARTEXT_NOT_PERMITTED) – statt das zu erlauben, wird der
  * Aufruf auf https:// umgeschrieben.
  */
-private class SecureUpgradeClient : WebViewClient() {
+private class SecureUpgradeClient(private val onGone: () -> Unit) : WebViewClient() {
+    /** Der Seiten-Prozess ist abgestuerzt (z. B. zu wenig Speicher) → nicht die App schliessen lassen, sondern neu laden. */
+    override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+        onGone()
+        return true
+    }
+
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
         val url = request.url
+        // fremde Schemata (intent:, mailto: …) nicht im Browser laden
+        if (url.scheme !in setOf("http", "https", "about", "blob", "data", "javascript")) {
+            runCatching { view.context.startActivity(Intent(Intent.ACTION_VIEW, url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            return true
+        }
         if (url.scheme == "http") {
             view.loadUrl(url.buildUpon().scheme("https").build().toString())
             return true
