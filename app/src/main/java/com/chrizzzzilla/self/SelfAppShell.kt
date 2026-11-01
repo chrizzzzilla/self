@@ -102,7 +102,13 @@ fun SelfAppShell(incomingBook: Uri?, onIncomingBookHandled: () -> Unit) {
                     if (it) menuOpen = false
                 },
             )
-            Section.GAME -> GameScreen(modifier = Modifier.fillMaxSize())
+            Section.GAME -> GameScreen(
+                modifier = Modifier.fillMaxSize(),
+                onOverlayChanged = {
+                    overlay = it
+                    if (it) menuOpen = false
+                },
+            )
         }
 
         // Tippen irgendwo anders schliesst das Menue

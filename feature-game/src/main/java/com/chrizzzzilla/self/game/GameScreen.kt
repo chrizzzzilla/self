@@ -27,6 +27,11 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,8 +64,6 @@ private enum class TrainingGame(@StringRes val label: Int, val color: Color) {
     HUMILITY(R.string.game_humility, Color(0xFF68C4A8)),
 }
 
-/** Tageslimit pro unterem Spiel (Minuten). Das obere Spiel „Me“ hat 30 Minuten. */
-private const val DAILY_MINUTES_SMALL = 10
 
 /**
  * Path – Bildschirmaufbau:
@@ -70,7 +73,15 @@ private const val DAILY_MINUTES_SMALL = 10
  * Sind die 10 Minuten eines Spiels fuer heute voll, wird sein Rand rot und es laesst sich nicht oeffnen.
  */
 @Composable
-fun GameScreen(modifier: Modifier = Modifier) {
+fun GameScreen(modifier: Modifier = Modifier, onOverlayChanged: (Boolean) -> Unit = {}) {
+    val context = LocalContext.current
+    val store = remember { PathStore(context) }
+    val calm by store.calm.collectAsStateWithLifecycle(initialValue = CalmProgress(0, 1, 0f))
+    var playing by remember { mutableStateOf(false) }
+    var levelUp by remember { mutableStateOf<Int?>(null) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(playing) { onOverlayChanged(playing) }
+
     BoxWithConstraints(modifier.fillMaxSize()) {
         val compact = maxWidth < 600.dp
         val sun = if (compact) 380.dp else 560.dp
@@ -93,11 +104,72 @@ fun GameScreen(modifier: Modifier = Modifier) {
             Spacer(Modifier.height(gap))
             Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
                 TrainingGame.entries.forEachIndexed { i, g ->
-                    // Noch keine Spiele: alle bei Level 1 und 0 Minuten
-                    TrainingTile(game = g, size = small, level = 1, minutesToday = 0, index = i)
+                    if (g == TrainingGame.CALM) {
+                        TrainingTile(
+                            game = g, size = small, level = calm.level, fill = calm.toNext,
+                            done = calm.stationsToday >= PathStore.STATIONS_PER_DAY, index = i,
+                            onOpen = { playing = true },
+                        )
+                    } else {
+                        // Ehrgeiz und Demut folgen
+                        TrainingTile(game = g, size = small, level = 1, fill = 0f, done = false, index = i, onOpen = {})
+                    }
                 }
             }
         }
+
+        // Aufstieg: kurz zeigen, was an innerer Ruhe dazugekommen ist
+        levelUp?.let { lv ->
+            LevelUpBanner(lv, CalmAbilities.unlocked(lv), Modifier.align(Alignment.Center)) { levelUp = null }
+        }
+    }
+
+    if (playing) {
+        val station = (calm.stationsToday + 1).coerceIn(1, PathStore.STATIONS_PER_DAY)
+        CalmGame(
+            level = station,
+            abilities = CalmAbilities(calm.level),
+            onComplete = {
+                scope.launch {
+                    val (before, after) = store.completeCalmStation(station)
+                    playing = false
+                    if (after > before) levelUp = after
+                }
+            },
+            onExit = { playing = false },
+        )
+    }
+}
+
+@Composable
+private fun LevelUpBanner(level: Int, text: String, modifier: Modifier, onDone: () -> Unit) {
+    val a = remember { Animatable(0f) }
+    LaunchedEffect(level) {
+        a.animateTo(1f, spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessLow))
+        kotlinx.coroutines.delay(4200)
+        a.animateTo(0f, androidx.compose.animation.core.tween(700))
+        onDone()
+    }
+    val shape = RoundedCornerShape(28.dp)
+    Column(
+        modifier
+            .graphicsLayer { alpha = a.value.coerceIn(0f, 1f); scaleX = 0.8f + 0.2f * a.value; scaleY = 0.8f + 0.2f * a.value }
+            .clip(shape)
+            .background(Color(0xF0141519))
+            .border(1.dp, AmbientColors.Arty, shape)
+            .padding(horizontal = 36.dp, vertical = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            "RUHE · LEVEL $level",
+            style = TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Medium, fontSize = 14.sp, letterSpacing = 6.sp, color = AmbientColors.ArtyText),
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text,
+            textAlign = TextAlign.Center,
+            style = TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Light, fontSize = 16.sp, color = AmbientColors.Light),
+        )
     }
 }
 
@@ -147,12 +219,18 @@ private fun MeTile(size: Dp) {
  * Tageslimit erreicht → roter Rand, nicht mehr antippbar.
  */
 @Composable
-private fun TrainingTile(game: TrainingGame, size: Dp, level: Int, minutesToday: Int, index: Int) {
+private fun TrainingTile(
+    game: TrainingGame,
+    size: Dp,
+    level: Int,
+    fill: Float,
+    done: Boolean,
+    index: Int,
+    onOpen: () -> Unit,
+) {
     val time = rememberTime()
     val bounce = remember { Animatable(1f) }
     val scope = rememberCoroutineScope()
-    val done = minutesToday >= DAILY_MINUTES_SMALL
-    val fill = (minutesToday / DAILY_MINUTES_SMALL.toFloat()).coerceIn(0f, 1f)
     val shape = RoundedCornerShape(28.dp)
     Box(
         Modifier
@@ -173,6 +251,7 @@ private fun TrainingTile(game: TrainingGame, size: Dp, level: Int, minutesToday:
                 scope.launch {
                     bounce.snapTo(0.93f)
                     bounce.animateTo(1f, spring(dampingRatio = 0.35f, stiffness = Spring.StiffnessMedium))
+                    onOpen()
                 }
             },
         contentAlignment = Alignment.Center,
@@ -180,7 +259,7 @@ private fun TrainingTile(game: TrainingGame, size: Dp, level: Int, minutesToday:
         // Lichtfuellung (mind. ein schmaler Schimmer am Boden)
         Canvas(Modifier.fillMaxSize()) {
             val t = time.floatValue
-            val level01 = (0.06f + 0.94f * fill).coerceIn(0f, 1f)
+            val level01 = (0.06f + 0.94f * fill.coerceIn(0f, 1f)).coerceIn(0f, 1f)
             val top = this.size.height * (1f - level01)
             val w = this.size.width
             val h = this.size.height
