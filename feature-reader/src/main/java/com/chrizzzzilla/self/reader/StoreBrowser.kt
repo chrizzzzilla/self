@@ -4,7 +4,11 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.util.Base64
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -74,8 +78,11 @@ internal class StoreDownload(
     val userAgent: String,
     val contentDisposition: String?,
     val mimeType: String?,
+    /** schon im Browser geladene Datei (blob:/data:-Downloads der Webreader) */
+    val localFile: File? = null,
+    givenName: String? = null,
 ) {
-    val fileName: String = URLUtil.guessFileName(url, contentDisposition, mimeType)
+    val fileName: String = givenName?.takeIf { it.isNotBlank() } ?: URLUtil.guessFileName(url, contentDisposition, mimeType)
     val isAdobeDrm: Boolean =
         fileName.endsWith(".acsm", ignoreCase = true) || mimeType?.contains("adept", ignoreCase = true) == true
     /** EPUB oder Comic-Archiv (CBZ) */
@@ -167,14 +174,44 @@ internal fun StoreBrowser(
                         override fun onProgressChanged(view: WebView?, newProgress: Int) { progress = newProgress }
                         override fun onReceivedTitle(view: WebView?, title: String?) { pageTitle = title.orEmpty() }
                     }
+                    val main = Handler(Looper.getMainLooper())
+                    // blob:-Downloads (Webreader) holt eine kleine Bruecke als Base64 aus der Seite
+                    addJavascriptInterface(object {
+                        @JavascriptInterface
+                        fun onBlob(base64: String, mime: String?, name: String?) {
+                            val file = runCatching {
+                                File(ctx.cacheDir, "blob-${System.currentTimeMillis()}").apply {
+                                    writeBytes(Base64.decode(base64, Base64.DEFAULT))
+                                }
+                            }.getOrNull() ?: return
+                            main.post { onDownload(StoreDownload("blob:", settings.userAgentString, null, mime, file, name)) }
+                        }
+                    }, "SelfBridge")
                     setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
-                        onDownload(StoreDownload(url, userAgent, contentDisposition, mimeType))
+                        when {
+                            url.startsWith("blob:") -> evaluateJavascript(blobFetchJs(url, mimeType, URLUtil.guessFileName(url, contentDisposition, mimeType)), null)
+                            url.startsWith("data:") -> {
+                                val file = runCatching {
+                                    File(ctx.cacheDir, "data-${System.currentTimeMillis()}").apply {
+                                        writeBytes(Base64.decode(url.substringAfter("base64,"), Base64.DEFAULT))
+                                    }
+                                }.getOrNull()
+                                if (file != null) main.post { onDownload(StoreDownload(url.take(40), userAgent, contentDisposition, mimeType, file)) }
+                            }
+                            // nicht im Rueckruf des Browsers selbst weitermachen (er wird danach geschlossen)
+                            else -> main.post { onDownload(StoreDownload(url, userAgent, contentDisposition, mimeType)) }
+                        }
                     }
                     loadUrl(source.url)
                     web = this
                 }
             },
-            onRelease = { it.destroy() },
+            onRelease = { w ->
+                // erst nach dem aktuellen Rueckruf zerstoeren – sonst kann der Browser abstuerzen
+                w.setDownloadListener(null)
+                w.stopLoading()
+                Handler(Looper.getMainLooper()).post { runCatching { w.destroy() } }
+            },
         )
     }
 }
@@ -207,8 +244,30 @@ private fun openExternal(context: Context, url: String) {
     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
 }
 
+/** JavaScript: blob-URL in der Seite lesen und als Base64 an Self geben. */
+private fun blobFetchJs(url: String, mime: String?, name: String?): String {
+    fun q(s: String?) = "'" + (s ?: "").replace("\\", "\\\\").replace("'", "\\'") + "'"
+    return """
+        (function(){
+          fetch(${q(url)}).then(function(r){ return r.blob(); }).then(function(b){
+            var fr = new FileReader();
+            fr.onloadend = function(){
+              var s = String(fr.result); var i = s.indexOf(',');
+              SelfBridge.onBlob(s.substring(i + 1), b.type || ${q(mime)}, ${q(name)});
+            };
+            fr.readAsDataURL(b);
+          });
+        })();
+    """.trimIndent()
+}
+
 /** Laedt eine Datei aus dem eingebauten Browser (mit dessen Anmelde-Cookies) in den Cache. */
 internal suspend fun downloadToCache(context: Context, d: StoreDownload): File = withContext(Dispatchers.IO) {
+    d.localFile?.let { f ->
+        val ext = if (d.fileName.endsWith(".cbz", ignoreCase = true) || d.mimeType?.contains("comic") == true) "cbz" else "epub"
+        val named = File(f.parentFile, f.name + "." + ext)
+        return@withContext if (f.renameTo(named)) named else f
+    }
     var url = URL(d.url)
     var conn: HttpURLConnection? = null
     var redirects = 0

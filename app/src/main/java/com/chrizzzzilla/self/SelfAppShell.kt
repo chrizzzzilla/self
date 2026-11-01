@@ -144,6 +144,9 @@ fun SelfAppShell(incomingBook: Uri?, onIncomingBookHandled: () -> Unit) {
                 .align(Alignment.BottomStart)
                 .padding(24.dp),
         )
+
+        // Nach einem Absturz: Protokoll zeigen
+        CrashNotice()
     }
 }
 

@@ -58,6 +58,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.chrizzzzilla.self.core.CrashLog
 import com.chrizzzzilla.self.core.SelfCore
 import com.chrizzzzilla.self.core.design.ArtySun
 import com.chrizzzzilla.self.core.design.WidthClass
@@ -100,7 +101,10 @@ fun LibraryScreen(
                 null
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                // auch schwere Fehler (z. B. zu wenig Speicher) nur melden, nicht abstuerzen
+                android.util.Log.e("Self", "Aufgabe fehlgeschlagen", e)
+                CrashLog.write(context, e)
                 e
             }
             busy = false
@@ -223,7 +227,7 @@ fun LibraryScreen(
                 onDownload = { d ->
                     when {
                         d.isAdobeDrm -> scope.launch { snackbar.showSnackbar(context.getString(R.string.reader_error_adobe_drm)) }
-                        !d.isBook && d.mimeType?.contains("octet-stream") != true ->
+                        !d.isBook && d.localFile == null && d.mimeType?.contains("octet-stream") != true ->
                             scope.launch { snackbar.showSnackbar(context.getString(R.string.reader_error_not_epub_download)) }
                         else -> {
                             store = null
