@@ -43,6 +43,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import kotlinx.coroutines.launch
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoSession
+import org.mozilla.geckoview.GeckoSessionSettings
 import org.mozilla.geckoview.GeckoView
 import org.mozilla.geckoview.StorageController
 import org.mozilla.geckoview.WebResponse
@@ -128,12 +129,20 @@ internal fun StoreBrowser(
     var sessionKey by remember { mutableIntStateOf(0) }
     var notice by remember { mutableStateOf<String?>(null) }
     val runtime = remember { Gecko.runtime(context) }
+    // Desktop-Ansicht (pro Quelle gemerkt) – manche Webreader laufen nur in ihrer PC-Version
+    val prefs = remember { context.getSharedPreferences("store_browser", android.content.Context.MODE_PRIVATE) }
+    var desktop by remember { mutableStateOf(prefs.getBoolean("desktop_${source.name}", false)) }
     val download by rememberUpdatedState(onDownload)
     val setProgress: (Int) -> Unit = { progress = it }
     val setCanGoBack: (Boolean) -> Unit = { canGoBack = it }
 
-    val session = remember(sessionKey) {
-        GeckoSession().apply {
+    val session = remember(sessionKey, desktop) {
+        GeckoSession(
+            GeckoSessionSettings.Builder()
+                .userAgentMode(if (desktop) GeckoSessionSettings.USER_AGENT_MODE_DESKTOP else GeckoSessionSettings.USER_AGENT_MODE_MOBILE)
+                .viewportMode(if (desktop) GeckoSessionSettings.VIEWPORT_MODE_DESKTOP else GeckoSessionSettings.VIEWPORT_MODE_MOBILE)
+                .build(),
+        ).apply {
             setContentDelegate(object : GeckoSession.ContentDelegate {
                 override fun onTitleChange(session: GeckoSession, title: String?) { pageTitle = title.orEmpty() }
 
@@ -248,6 +257,24 @@ internal fun StoreBrowser(
                     val tip = center + androidx.compose.ui.geometry.Offset(r * 0.77f, r * 0.64f)
                     drawLine(AmbientColors.Light, tip, tip + androidx.compose.ui.geometry.Offset(0f, -r * 0.6f), strokeWidth = 1.8f * density, cap = androidx.compose.ui.graphics.StrokeCap.Round)
                     drawLine(AmbientColors.Light, tip, tip + androidx.compose.ui.geometry.Offset(-r * 0.6f, 0f), strokeWidth = 1.8f * density, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                }
+            }
+            // Umschalten Handy-/PC-Ansicht
+            IconButton(onClick = {
+                desktop = !desktop
+                prefs.edit().putBoolean("desktop_${source.name}", desktop).apply()
+                notice = if (desktop) "PC-Ansicht an – die Seite lädt neu." else "Tablet-Ansicht an – die Seite lädt neu."
+            }) {
+                androidx.compose.foundation.Canvas(Modifier.padding(12.dp).fillMaxSize()) {
+                    val col = if (desktop) AmbientColors.ArtyText else AmbientColors.Light
+                    val w = size.width
+                    val h = size.height
+                    drawRoundRect(
+                        col, topLeft = androidx.compose.ui.geometry.Offset(w * 0.08f, h * 0.15f), size = androidx.compose.ui.geometry.Size(w * 0.84f, h * 0.55f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.06f), style = androidx.compose.ui.graphics.drawscope.Stroke(1.8f * density),
+                    )
+                    drawLine(col, androidx.compose.ui.geometry.Offset(w * 0.5f, h * 0.7f), androidx.compose.ui.geometry.Offset(w * 0.5f, h * 0.85f), strokeWidth = 1.8f * density)
+                    drawLine(col, androidx.compose.ui.geometry.Offset(w * 0.3f, h * 0.87f), androidx.compose.ui.geometry.Offset(w * 0.7f, h * 0.87f), strokeWidth = 1.8f * density, cap = androidx.compose.ui.graphics.StrokeCap.Round)
                 }
             }
             IconButton(onClick = { openExternal(context, currentUrl) }) {
