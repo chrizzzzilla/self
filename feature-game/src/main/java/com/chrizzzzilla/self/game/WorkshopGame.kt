@@ -1,6 +1,11 @@
 package com.chrizzzzilla.self.game
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -208,7 +213,7 @@ internal fun WorkshopGame(onExit: () -> Unit) {
     }
 
     val d = data
-    Box(Modifier.fillMaxSize().background(Color(0xFF0E1014))) {
+    Box(Modifier.fillMaxSize().background(AmbientColors.Ground)) {
         if (d == null) return@Box
         if (version < 0) return@Box // Neuaufbau bei Aenderungen
         val dayOver = d.secondsToday >= DAILY_SECONDS
@@ -560,18 +565,27 @@ private fun KraftMeter(state: androidx.compose.runtime.MutableFloatState) {
 
 @Composable
 private fun NodeSpot(item: Item, left: Int?, locked: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    Column(
+    val inf = rememberInfiniteTransition(label = "node")
+    val p by inf.animateFloat(0.7f, 1f, infiniteRepeatable(tween(1700 + item.ordinal * 90), RepeatMode.Reverse), label = "puls")
+    Box(
         modifier
             .size(68.dp)
-            .clip(CircleShape)
-            .background(Color(0x33000000))
-            .border(1.dp, if (locked) Color(0x33FFFFFF) else item.color.copy(alpha = 0.7f), CircleShape)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+        contentAlignment = Alignment.Center,
     ) {
-        ItemIcon(item, 30.dp, dim = locked)
-        if (left != null) Text("$left", style = labelStyle.copy(fontSize = 10.sp, color = if (left > 0) AmbientColors.Light else AmbientColors.Muted))
+        Canvas(Modifier.fillMaxSize()) {
+            val r = size.minDimension / 2f
+            if (!locked) glow(center, r * 1.15f * p, item.color, 0.35f)
+            drawCircle(Color(0x66000000), radius = r * 0.62f)
+            drawCircle(
+                (if (locked) Color.White.copy(alpha = 0.15f) else item.color.copy(alpha = 0.55f * p)),
+                radius = r * 0.62f, style = Stroke(1.2f * density),
+            )
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            ItemIcon(item, 26.dp, dim = locked)
+            if (left != null) Text("$left", style = labelStyle.copy(fontSize = 9.sp, color = if (left > 0) AmbientColors.Light else AmbientColors.Muted))
+        }
     }
 }
 
@@ -745,7 +759,10 @@ private fun RecipeBook(d: WorkshopData, onClose: () -> Unit) {
 
 @Composable
 internal fun ItemIcon(item: Item, size: Dp, dim: Boolean = false) {
-    Canvas(Modifier.size(size)) { drawItem(item, if (dim) 0.25f else 1f) }
+    Canvas(Modifier.size(size)) {
+        if (!dim) glow(center, this.size.minDimension * 0.62f, item.color, 0.32f)
+        drawItem(item, if (dim) 0.25f else 1f)
+    }
 }
 
 private fun DrawScope.drawItem(item: Item, alpha: Float) {
@@ -787,64 +804,159 @@ private fun DrawScope.drawItem(item: Item, alpha: Float) {
     }
 }
 
-/** Landschaft: Himmel nach Tageszeit (Morgen → Abend ueber die 10 Minuten), Sonne, Wald, Felsen, Fluss. */
+/** Weicher Lichtfleck (additiv). */
+private fun DrawScope.glow(c: Offset, radius: Float, color: Color, alpha: Float) {
+    if (radius <= 0f) return
+    drawCircle(
+        Brush.radialGradient(listOf(color.copy(alpha = alpha), color.copy(alpha = alpha * 0.35f), Color.Transparent), center = c, radius = radius),
+        radius = radius, center = c, blendMode = BlendMode.Plus,
+    )
+}
+
+private fun hash(i: Int): Float {
+    val v = sin(i * 12.9898f + 78.233f) * 43758.547f
+    return v - kotlin.math.floor(v)
+}
+
+/** Huegelkette als dunkle Silhouette, Oberkante leuchtet dort, wo das Licht steht. */
+private fun DrawScope.ridge(baseY: Float, amp: Float, freq: Float, phase: Float, fill: Color, edge: Float, light: Color, lightX: Float) {
+    val w = size.width
+    val top = Path()
+    val body = Path()
+    val n = 90
+    for (i in 0..n) {
+        val x = w * i / n
+        val y = baseY - (sin(x / w * freq + phase) * 0.6f + sin(x / w * freq * 2.3f + phase * 1.7f) * 0.4f) * amp
+        if (i == 0) { top.moveTo(x, y); body.moveTo(x, y) } else { top.lineTo(x, y); body.lineTo(x, y) }
+    }
+    body.lineTo(w, size.height); body.lineTo(0f, size.height); body.close()
+    drawPath(body, fill)
+    drawPath(
+        top,
+        Brush.horizontalGradient(
+            listOf(light.copy(alpha = edge * 0.15f), light.copy(alpha = edge), light.copy(alpha = edge * 0.15f)),
+            startX = lightX - w * 0.55f, endX = lightX + w * 0.55f,
+        ),
+        style = Stroke(1.3f * density),
+        blendMode = BlendMode.Plus,
+    )
+}
+
+/** Werkstatt im Licht-Stil: dunkle Landschaft, wanderndes Tageslicht (= Restzeit), Lichtkanten, Staub, Glut. */
 private fun DrawScope.drawLandscape(t: Float, day: Float, d: WorkshopData, fig: FigureState) {
     val w = size.width
     val h = size.height
-    val evening = smoothstep(0.7f, 1f, day)
-    val morning = 1f - smoothstep(0f, 0.25f, day)
-    val top = lerp(lerp(Color(0xFF5C9AD6), Color(0xFF7A8CC8), morning), Color(0xFF3A3470), evening)
-    val hor = lerp(lerp(Color(0xFFCFE6F2), Color(0xFFF4C9A0), morning), Color(0xFFF08A5A), evening)
-    val horizon = h * 0.42f
-    drawRect(Brush.verticalGradient(listOf(top, hor), startY = 0f, endY = horizon))
-    // Sonne (Restzeit)
+    val evening = smoothstep(0.65f, 1f, day)
+    val horizon = h * 0.46f
+    drawRect(
+        Brush.verticalGradient(
+            listOf(Color(0xFF06070A), lerp(Color(0xFF1C1813), Color(0xFF221219), evening), Color(0xFF0A0A0D)),
+            startY = 0f, endY = h,
+        ),
+    )
+    // Tageslicht
     val sx = w * (0.08f + 0.84f * day)
-    val sy = horizon - sin(day * PI.toFloat()) * horizon * 0.75f
-    drawCircle(Brush.radialGradient(listOf(Color(0xFFFFE2A8).copy(alpha = 0.6f), Color.Transparent), center = Offset(sx, sy), radius = h * 0.25f), radius = h * 0.25f, center = Offset(sx, sy), blendMode = BlendMode.Plus)
-    drawCircle(Color(0xFFFFF0CC), radius = h * 0.04f, center = Offset(sx, sy))
-    // Huegel
-    val hill = lerp(Color(0xFF6E9A5A), Color(0xFF3E4A40), evening)
-    val p = Path(); p.moveTo(0f, horizon + h * 0.05f)
-    var x = 0f
-    while (x <= w) { p.lineTo(x, horizon - sin(x / w * 5f) * h * 0.03f); x += w / 60f }
-    p.lineTo(w, h); p.lineTo(0f, h); p.close()
-    drawPath(p, hill)
-    drawRect(lerp(Color(0xFF7FAE5E), Color(0xFF465440), evening), topLeft = Offset(0f, h * 0.5f), size = Size(w, h * 0.5f))
-    // Wald links
-    val tree = lerp(Color(0xFF2E5A38), Color(0xFF1A2A22), evening)
-    for (k in 0 until 7) {
-        val tx = w * (0.02f + k * 0.045f)
-        val th = h * (0.22f + (k % 3) * 0.05f)
-        val sway = sin(t * 0.6f + k) * w * 0.003f
-        drawLine(Color(0xFF4A3424), Offset(tx, h * 0.55f), Offset(tx, h * 0.55f - th * 0.4f), strokeWidth = w * 0.006f)
-        drawCircle(tree, radius = th * 0.32f, center = Offset(tx + sway, h * 0.55f - th * 0.55f))
+    val sy = horizon - sin(day * PI.toFloat()) * horizon * 0.72f
+    val sun = lerp(Color(0xFFFFE6B0), Color(0xFFFF8A50), evening)
+    glow(Offset(sx, sy), h * 0.6f, sun, 0.16f)
+    glow(Offset(sx, sy), h * 0.17f, sun, 0.5f)
+    drawCircle(sun.copy(alpha = 0.95f), radius = h * 0.02f, center = Offset(sx, sy))
+    // Sterne gegen Abend
+    if (evening > 0f) {
+        for (k in 0 until 46) {
+            val tw = 0.5f + 0.5f * sin(t * (0.5f + hash(k)) + k)
+            drawCircle(
+                Color.White.copy(alpha = 0.55f * evening * tw), radius = 1.1f * density,
+                center = Offset(hash(k * 3 + 1) * w, hash(k * 7 + 2) * horizon * 0.85f),
+            )
+        }
     }
-    // Felsen Mitte
-    drawOval(lerp(Color(0xFF8E8E8A), Color(0xFF4A4A4C), evening), topLeft = Offset(w * 0.42f, h * 0.5f), size = Size(w * 0.14f, h * 0.12f))
-    // Fluss rechts
-    val river = Path(); river.moveTo(w * 0.84f, h * 0.5f); river.cubicTo(w * 0.8f, h * 0.7f, w * 0.95f, h * 0.8f, w * 0.88f, h); river.lineTo(w, h); river.lineTo(w, h * 0.5f); river.close()
-    drawPath(river, lerp(Color(0xFF5EA8D8), Color(0xFF2A4A6A), evening))
+    // Huegel (hinten → vorn)
+    ridge(horizon - h * 0.03f, h * 0.06f, 3.1f, 0.7f, Color(0xFF16151A), 0.22f, sun, sx)
+    ridge(horizon + h * 0.04f, h * 0.045f, 5.3f, 2.1f, Color(0xFF111115), 0.32f, sun, sx)
+    // Wald links: Nadelbaum-Silhouetten mit Lichtkante
+    for (k in 0 until 9) {
+        val tx = w * (0.015f + k * 0.034f + hash(k + 40) * 0.01f)
+        val th = h * (0.2f + hash(k + 50) * 0.12f)
+        val foot = h * (0.56f + hash(k + 60) * 0.03f)
+        val sway = sin(t * 0.5f + k) * w * 0.002f
+        val tree = Path().apply {
+            moveTo(tx + sway, foot - th)
+            lineTo(tx + th * 0.22f, foot)
+            lineTo(tx - th * 0.22f, foot)
+            close()
+        }
+        drawPath(tree, Color(0xFF0B0B0F))
+        drawLine(sun.copy(alpha = 0.22f), Offset(tx + sway, foot - th), Offset(tx + th * 0.22f, foot), strokeWidth = 1f * density, blendMode = BlendMode.Plus)
+    }
+    ridge(h * 0.6f, h * 0.02f, 4.2f, 0.3f, Color(0xFF0D0D10), 0.42f, sun, sx)
+    // Felsen
+    val rock = Offset(w * 0.49f, h * 0.57f)
+    drawOval(Color(0xFF18181C), topLeft = Offset(rock.x - w * 0.07f, rock.y - h * 0.05f), size = Size(w * 0.14f, h * 0.1f))
+    drawArc(
+        sun.copy(alpha = 0.35f), startAngle = 200f, sweepAngle = 120f, useCenter = false,
+        topLeft = Offset(rock.x - w * 0.07f, rock.y - h * 0.05f), size = Size(w * 0.14f, h * 0.1f),
+        style = Stroke(1.2f * density), blendMode = BlendMode.Plus,
+    )
+    // Fluss rechts mit Lichtglitzern
+    val river = Path().apply {
+        moveTo(w * 0.84f, h * 0.58f); cubicTo(w * 0.8f, h * 0.72f, w * 0.95f, h * 0.82f, w * 0.88f, h)
+        lineTo(w, h); lineTo(w, h * 0.58f); close()
+    }
+    drawPath(river, Color(0xFF0C1622))
+    for (k in 0 until 16) {
+        val ph = (t * 0.12f + hash(k + 90)) % 1f
+        val ry = h * (0.6f + ph * 0.4f)
+        val rx = w * (0.9f + hash(k + 70) * 0.08f) - (ry - h * 0.6f) * 0.05f
+        val a = sin(ph * PI.toFloat()) * 0.5f
+        drawLine(Color(0xFF9FD0FF).copy(alpha = a), Offset(rx, ry), Offset(rx + w * 0.015f, ry), strokeWidth = 1.2f * density, blendMode = BlendMode.Plus)
+    }
     // Sandbank
-    drawOval(lerp(Color(0xFFE2C98E), Color(0xFF7A6A4E), evening), topLeft = Offset(w * 0.74f, h * 0.56f), size = Size(w * 0.12f, h * 0.08f))
-    // Gebaute Einrichtungen in der Werkstatt-Mitte
+    drawOval(Color(0xFF241F17), topLeft = Offset(w * 0.74f, h * 0.6f), size = Size(w * 0.12f, h * 0.06f))
+    // Lagerfeuer mit Glut
     if (Item.LAGERFEUER in d.built) {
         val c = Offset(w * 0.62f, h * 0.88f)
-        for (k in 0 until 6) drawCircle(Color(0xFF8E8E8A), radius = h * 0.015f, center = Offset(c.x + (k - 2.5f) * h * 0.028f, c.y))
-        val fl = 0.8f + 0.2f * sin(t * 9f) + 0.1f * sin(t * 13f)
-        drawCircle(Brush.radialGradient(listOf(Color(0xFFFFB050).copy(alpha = 0.6f), Color.Transparent), center = c, radius = h * 0.12f * fl), radius = h * 0.12f * fl, center = c, blendMode = BlendMode.Plus)
-        val flame = Path(); flame.moveTo(c.x - h * 0.03f, c.y); flame.lineTo(c.x, c.y - h * 0.08f * fl); flame.lineTo(c.x + h * 0.03f, c.y); flame.close()
-        drawPath(flame, Color(0xFFFFA040))
+        val fl = 0.85f + 0.15f * sin(t * 9f) + 0.08f * sin(t * 13.7f)
+        glow(c, h * 0.34f * fl, Color(0xFFFF9A40), 0.32f)
+        for (k in 0 until 6) drawCircle(Color(0xFF2A2A30), radius = h * 0.014f, center = Offset(c.x + (k - 2.5f) * h * 0.026f, c.y))
+        for (layer in 0 until 3) {
+            val hh = h * (0.09f - layer * 0.025f) * fl
+            val ww = h * (0.032f - layer * 0.008f)
+            val col = listOf(Color(0xFFFF6A20), Color(0xFFFFA040), Color(0xFFFFE6A0))[layer]
+            val flame = Path().apply {
+                moveTo(c.x - ww, c.y)
+                quadraticTo(c.x - ww * 0.6f, c.y - hh * 0.6f, c.x + sin(t * 7f + layer) * ww * 0.3f, c.y - hh)
+                quadraticTo(c.x + ww * 0.6f, c.y - hh * 0.6f, c.x + ww, c.y)
+                close()
+            }
+            drawPath(flame, col.copy(alpha = 0.9f), blendMode = BlendMode.Plus)
+        }
+        for (k in 0 until 14) {
+            val ph = (t * (0.35f + hash(k + 11) * 0.3f) + hash(k + 12)) % 1f
+            val e = Offset(c.x + sin(ph * 6f + k) * h * 0.03f, c.y - h * 0.05f - ph * h * 0.28f)
+            drawCircle(Color(0xFFFFB060).copy(alpha = (1f - ph) * 0.9f), radius = 1.6f * density * (1f - ph * 0.5f), center = e, blendMode = BlendMode.Plus)
+        }
     }
+    // Werkbank (Silhouette, Lichtkante, kleine Laterne)
     if (Item.WERKBANK in d.built) {
         val bx = w * 0.3f
         val by = h * 0.86f
-        drawRect(Color(0xFF9A7048), topLeft = Offset(bx, by), size = Size(w * 0.1f, h * 0.025f))
-        drawLine(Color(0xFF6A4A30), Offset(bx + w * 0.01f, by), Offset(bx + w * 0.01f, by + h * 0.08f), strokeWidth = w * 0.006f)
-        drawLine(Color(0xFF6A4A30), Offset(bx + w * 0.09f, by), Offset(bx + w * 0.09f, by + h * 0.08f), strokeWidth = w * 0.006f)
+        drawRect(Color(0xFF1A1714), topLeft = Offset(bx, by), size = Size(w * 0.1f, h * 0.025f))
+        drawLine(Color(0xFF1A1714), Offset(bx + w * 0.01f, by), Offset(bx + w * 0.01f, by + h * 0.08f), strokeWidth = w * 0.006f)
+        drawLine(Color(0xFF1A1714), Offset(bx + w * 0.09f, by), Offset(bx + w * 0.09f, by + h * 0.08f), strokeWidth = w * 0.006f)
+        drawLine(Color(0xFFC8B48C).copy(alpha = 0.5f), Offset(bx, by), Offset(bx + w * 0.1f, by), strokeWidth = 1.2f * density, blendMode = BlendMode.Plus)
+        glow(Offset(bx + w * 0.085f, by - h * 0.015f), h * 0.06f, Color(0xFFFFC870), 0.45f)
+    }
+    // Schwebender Staub im Licht
+    for (k in 0 until 55) {
+        val sp = 0.004f + hash(k + 200) * 0.01f
+        val px = ((hash(k + 100) + t * sp) % 1f) * w
+        val py = (hash(k + 150) * 0.9f + sin(t * 0.3f + k) * 0.02f) * h
+        val a = (0.12f + hash(k + 250) * 0.3f) * (0.6f + 0.4f * sin(t * 0.8f + k * 1.3f))
+        drawCircle(Color(0xFFFFE2B0).copy(alpha = a), radius = (0.8f + hash(k + 300) * 1.6f) * density, center = Offset(px, py), blendMode = BlendMode.Plus)
     }
     drawFigure(fig, t, evening)
-    // Daemmerung am Abend
-    if (evening > 0f) drawRect(Color(0xFF0A0A20).copy(alpha = 0.25f * evening))
+    if (evening > 0f) drawRect(Color(0xFF05050C).copy(alpha = 0.2f * evening))
 }
 
 internal class FigureState {
@@ -859,7 +971,7 @@ internal class FigureState {
 
 internal class Flyer(val item: Item, val x: Float, val y: Float, val t0: Float)
 
-/** Kleine Spielfigur im Umhang: laeuft, bueckt sich zum Sammeln, arbeitet mit dem Arm. */
+/** Spielfigur als Silhouette mit Arty-blauer Lichtkante und kleiner Laterne. */
 private fun DrawScope.drawFigure(f: FigureState, t: Float, evening: Float) {
     val x = f.x * size.width
     val y = f.y * size.height
@@ -867,23 +979,24 @@ private fun DrawScope.drawFigure(f: FigureState, t: Float, evening: Float) {
     val sw = if (f.moving) sin(f.walk) else 0f
     val bob = if (f.moving) abs(cos(f.walk)) * s * 0.035f else sin(t * 1.6f) * s * 0.008f
     val bend = if (f.gather > 0f) sin(f.gather / 0.4f * PI.toFloat()) * s * 0.12f else 0f
-    // Schatten
-    drawOval(Color.Black.copy(alpha = 0.28f), topLeft = Offset(x - s * 0.22f, y - s * 0.04f), size = Size(s * 0.44f, s * 0.08f))
+    val dark = Color(0xFF0E0F15)
+    val rim = AmbientColors.Arty
+    drawOval(Color.Black.copy(alpha = 0.45f), topLeft = Offset(x - s * 0.24f, y - s * 0.04f), size = Size(s * 0.48f, s * 0.08f))
     val hip = Offset(x, y - s * 0.45f - bob + bend * 0.3f)
-    val legC = lerp(Color(0xFF3A3A48), Color(0xFF1E1E28), evening)
-    drawLine(legC, hip, Offset(x + sw * s * 0.17f, y), strokeWidth = s * 0.075f, cap = StrokeCap.Round)
-    drawLine(legC, hip, Offset(x - sw * s * 0.17f, y), strokeWidth = s * 0.075f, cap = StrokeCap.Round)
+    val legA = Offset(x + sw * s * 0.17f, y)
+    val legB = Offset(x - sw * s * 0.17f, y)
+    drawLine(dark, hip, legA, strokeWidth = s * 0.08f, cap = StrokeCap.Round)
+    drawLine(dark, hip, legB, strokeWidth = s * 0.08f, cap = StrokeCap.Round)
     val sh = Offset(x + f.facing * bend * 0.6f, y - s * 0.82f - bob + bend)
-    val cloakC = lerp(Color(0xFF6888EC), Color(0xFF34406A), evening)
     val cloak = Path().apply {
         moveTo(sh.x - s * 0.11f, sh.y)
         lineTo(sh.x + s * 0.11f, sh.y)
-        lineTo(hip.x + s * 0.19f - f.facing * sw * s * 0.03f, hip.y + s * 0.1f)
-        lineTo(hip.x - s * 0.19f - f.facing * sw * s * 0.03f, hip.y + s * 0.1f)
+        lineTo(hip.x + s * 0.2f - f.facing * sw * s * 0.03f, hip.y + s * 0.1f)
+        lineTo(hip.x - s * 0.2f - f.facing * sw * s * 0.03f, hip.y + s * 0.1f)
         close()
     }
-    drawPath(cloak, cloakC)
-    // Arm: 0 = haengt, PI/2 = nach vorn, PI = nach oben
+    drawPath(cloak, dark)
+    drawPath(cloak, rim.copy(alpha = 0.75f), style = Stroke(1.3f * density), blendMode = BlendMode.Plus)
     val a = when {
         f.work > 0f -> 0.9f + abs(sin(f.work * 16f)) * 1.7f
         f.gather > 0f -> 0.7f
@@ -891,30 +1004,34 @@ private fun DrawScope.drawFigure(f: FigureState, t: Float, evening: Float) {
         else -> 0.12f
     }
     val armLen = s * (if (f.gather > 0f) 0.42f else 0.34f)
-    val hand = Offset(sh.x + sin(a) * f.facing * armLen, sh.y + s * 0.04f + cos(a) * armLen)
-    drawLine(lerp(cloakC, Color.Black, 0.25f), Offset(sh.x, sh.y + s * 0.04f), hand, strokeWidth = s * 0.07f, cap = StrokeCap.Round)
+    val shoulder = Offset(sh.x, sh.y + s * 0.04f)
+    val hand = Offset(sh.x + sin(a) * f.facing * armLen, shoulder.y + cos(a) * armLen)
+    drawLine(dark, shoulder, hand, strokeWidth = s * 0.075f, cap = StrokeCap.Round)
+    drawLine(rim.copy(alpha = 0.5f), shoulder, hand, strokeWidth = 1f * density, cap = StrokeCap.Round, blendMode = BlendMode.Plus)
     if (f.work > 0f) {
-        // Werkzeug in der Hand
         val dir = Offset(sin(a + 1.4f) * f.facing, cos(a + 1.4f))
-        drawLine(Color(0xFF8A6A48), hand, hand + dir * (s * 0.22f), strokeWidth = s * 0.04f, cap = StrokeCap.Round)
-        drawCircle(Color(0xFF9A9A98), radius = s * 0.06f, center = hand + dir * (s * 0.22f))
+        val tip = hand + dir * (s * 0.22f)
+        drawLine(dark, hand, tip, strokeWidth = s * 0.045f, cap = StrokeCap.Round)
+        drawCircle(dark, radius = s * 0.065f, center = tip)
+        drawCircle(AmbientColors.Gold.copy(alpha = 0.6f), radius = s * 0.065f, center = tip, style = Stroke(1f * density), blendMode = BlendMode.Plus)
+        // Funken beim Zuschlagen
+        if (abs(sin(f.work * 16f)) < 0.25f) for (k in 0 until 5) {
+            val ang = k * 1.3f + t * 3f
+            drawCircle(Color(0xFFFFD080).copy(alpha = 0.8f), radius = 1.4f * density, center = tip + Offset(cos(ang), sin(ang)) * (s * 0.12f), blendMode = BlendMode.Plus)
+        }
     }
-    drawCircle(Color(0xFFEADBC4), radius = s * 0.045f, center = hand)
     // Kopf mit Kapuze
     val head = Offset(sh.x + f.facing * s * 0.01f, sh.y - s * 0.13f)
-    drawCircle(Color(0xFFEADBC4), radius = s * 0.1f, center = head)
+    drawCircle(dark, radius = s * 0.115f, center = head)
     drawArc(
-        lerp(cloakC, Color.Black, 0.15f), startAngle = 160f, sweepAngle = 220f, useCenter = true,
-        topLeft = Offset(head.x - s * 0.125f, head.y - s * 0.13f), size = Size(s * 0.25f, s * 0.25f),
+        rim.copy(alpha = 0.8f), startAngle = 180f + f.facing * 10f, sweepAngle = 180f, useCenter = false,
+        topLeft = Offset(head.x - s * 0.115f, head.y - s * 0.115f), size = Size(s * 0.23f, s * 0.23f),
+        style = Stroke(1.3f * density), blendMode = BlendMode.Plus,
     )
-    // Abends: kleines Licht
-    if (evening > 0.2f) {
-        val lc = Offset(hip.x + f.facing * s * 0.22f, hip.y)
-        drawCircle(
-            Brush.radialGradient(listOf(Color(0xFFFFC870).copy(alpha = 0.5f * evening), Color.Transparent), center = lc, radius = s * 0.5f),
-            radius = s * 0.5f, center = lc, blendMode = BlendMode.Plus,
-        )
-    }
+    // Laterne am Guertel
+    val lc = Offset(hip.x + f.facing * s * 0.22f, hip.y + s * 0.02f + sin(f.walk) * s * 0.02f)
+    glow(lc, s * (0.45f + 0.35f * evening), Color(0xFFFFC870), 0.45f)
+    drawCircle(Color(0xFFFFE6B0), radius = s * 0.028f, center = lc)
 }
 
 private fun smoothstep(a: Float, b: Float, x: Float): Float {
