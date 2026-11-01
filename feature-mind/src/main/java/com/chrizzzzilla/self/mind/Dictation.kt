@@ -82,9 +82,29 @@ internal fun DictationButton(
         return r
     }
 
+    // Rueckfall: der Sprach-Dialog des Systems (kann Deutsch fast immer)
+    val dialog = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+        listening = false
+        val said = res.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+        if (said != null) {
+            val base = current().let { if (it.isBlank()) "" else it.trimEnd() + " " }
+            text(base + said)
+        }
+    }
+    fun speechIntent() = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE, "de-DE")
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "de-DE")
+        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+        putExtra(RecognizerIntent.EXTRA_PROMPT, "Erzähl einfach …")
+    }
+    fun openDialog() {
+        runCatching { dialog.launch(speechIntent()) }.onFailure { msg("Auf diesem Gerät gibt es keine deutsche Spracherkennung.") }
+    }
+
     fun start(preferDevice: Boolean = true) {
         val r = (if (recognizer == null || (preferDevice != onDevice && !preferDevice)) create(preferDevice) else recognizer)
-            ?: run { msg("Auf diesem Gerät gibt es keine Spracherkennung."); return }
+            ?: run { openDialog(); return }
         val base = current().let { if (it.isBlank()) "" else it.trimEnd() + " " }
         r.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) { listening = true }
@@ -104,8 +124,16 @@ internal fun DictationButton(
                 listening = false
                 when (error) {
                     // Sprachpaket fehlt auf dem Geraet → einmal mit der System-Erkennung versuchen
-                    SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE ->
-                        if (onDevice) { create(false); start(false) } else msg("Deutsch ist für die Spracherkennung nicht verfügbar.")
+                    SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> {
+                        // Deutsches Sprachpaket fuer die Erkennung auf dem Geraet nachladen (Android 13+) …
+                        if (onDevice && Build.VERSION.SDK_INT >= 33) {
+                            runCatching { recognizer?.triggerModelDownload(speechIntent()) }
+                            msg("Das deutsche Sprachpaket wird geladen – bis dahin hilft der System-Dialog.")
+                        }
+                        // … und jetzt gleich mit dem System-Dialog weitermachen
+                        openDialog()
+                    }
+                    SpeechRecognizer.ERROR_CLIENT, SpeechRecognizer.ERROR_SERVER, SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> openDialog()
                     SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> msg("Ich habe nichts gehört – tipp noch einmal aufs Mikrofon.")
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> msg("Das Mikrofon ist nicht erlaubt.")
                     SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> msg("Die Spracherkennung braucht gerade Internet.")
@@ -113,13 +141,8 @@ internal fun DictationButton(
                 }
             }
         })
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "de-DE")
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-        }
-        runCatching { r.startListening(intent); listening = true }.onFailure { msg("Spracherkennung hat gerade nicht geklappt.") }
+        val intent = speechIntent().apply { putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true) }
+        runCatching { r.startListening(intent); listening = true }.onFailure { openDialog() }
     }
 
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
