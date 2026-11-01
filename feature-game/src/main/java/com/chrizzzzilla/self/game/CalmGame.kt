@@ -257,10 +257,10 @@ private class FlightState(startMinute: Int, var secondsLeft: Float, var shieldMa
 
         // ---- Licht bewegen: steigen solange links gehalten, sonst sanft sinken ----
         val lift = left.isNotEmpty()
-        val acc = if (lift) 1.5f else -1.0f
+        val acc = if (lift) 1.5f else -0.7f
         vy += acc * dt
         vy *= (1f - min(1f, dt * 2.2f))
-        vy = vy.coerceIn(-0.55f, 0.6f)
+        vy = vy.coerceIn(-0.42f, 0.6f)
         // Wind ab Minute 7
         gust = if (minute >= 6) sin(t * 0.45f) * 0.5f + sin(t * 1.3f) * 0.3f else 0f
         y += (vy + gust * 0.12f * waves) * dt
@@ -324,12 +324,14 @@ private class FlightState(startMinute: Int, var secondsLeft: Float, var shieldMa
         }
 
         // ---- Treffer ----
-        val pr = 0.028f
+        // Trefferflaeche = sichtbarer Kern (rot eher knapp, gruen grosszuegig)
+        val pr = 0.008f
         for (o in objs) {
             if (o.gone > 0f) continue
             val dx = (o.x - 0.25f) * aspect
             val dy = o.y - y
-            if (dx * dx + dy * dy < (o.r + pr) * (o.r + pr)) {
+            val hitR = if (o.red) o.r * 0.6f + pr else o.r * 1.6f + 0.02f
+            if (dx * dx + dy * dy < hitR * hitR) {
                 if (!o.red) {
                     o.gone = 0.01f
                     greens++
@@ -385,7 +387,8 @@ private fun cHash(i: Int): Float {
 private fun DrawScope.drawFlight(s: FlightState, measurer: TextMeasurer) {
     val w = size.width
     val h = size.height
-    s.aspect = w / h
+    // gleicher Massstab wie beim Zeichnen: 1 Einheit = 0,84 Bildhoehen
+    s.aspect = w / (h * 0.84f)
     val t = s.t
     drawWorld(s, 0.85f)
     fun sx(x: Float) = x * w
