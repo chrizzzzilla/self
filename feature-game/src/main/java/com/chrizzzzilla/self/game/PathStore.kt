@@ -16,65 +16,76 @@ import kotlin.math.roundToInt
 
 private val Context.pathStore: DataStore<Preferences> by preferencesDataStore(name = "path")
 
-/** Stand eines Spiels: heutige Stationen + Level-Fortschritt. */
+/** Stand von „Ruhe“. */
 internal data class CalmProgress(
-    /** heute bestandene Stationen */
-    val stationsToday: Int,
-    /** heute gespielte Runden (bestanden oder nicht) – Tageslimit */
-    val attemptsToday: Int,
+    /** im laufenden Durchgang geschaffte Minuten (= Checkpoint) 0..9 */
+    val checkpoint: Int,
+    /** heute gespielte Sekunden (Tageslimit 10 Minuten) */
+    val secondsToday: Int,
     val level: Int,
     /** 0..1 Fortschritt zum naechsten Level */
     val toNext: Float,
+    /** komplett geschaffte Durchgaenge */
+    val runs: Int,
 )
 
 /**
  * Fortschritt der Path-Spiele.
- * Ruhe: 10 Stationen pro Tag (je 1 Min.). Station n bringt n Punkte (ein voller Tag = 55).
- * Level 1→2 braucht 55 Punkte, danach je ~25 % mehr – oben langsamer, aber nie zaeh.
+ * Ruhe: ein Durchgang = 10 Minuten am Stueck, jede Minute schwieriger und ein Checkpoint.
+ * Der Checkpoint bleibt auch ueber Nacht. Minute n bringt n Punkte (ein ganzer Durchgang = 55).
+ * Level 1→2 braucht 55 Punkte, danach je ~25 % mehr.
  */
 internal class PathStore(context: Context) {
     private val store = context.applicationContext.pathStore
     private val dateKey = stringPreferencesKey("date")
-    private val calmKey = intPreferencesKey("calm_rounds")
     private val calmXpKey = intPreferencesKey("calm_xp")
-    private val calmTriesKey = intPreferencesKey("calm_tries")
+    private val checkpointKey = intPreferencesKey("calm_checkpoint")
+    private val secondsKey = intPreferencesKey("calm_seconds")
+    private val runsKey = intPreferencesKey("calm_runs")
 
     private fun today() = LocalDate.now().toString()
 
     val calm: Flow<CalmProgress> = store.data.map { p ->
         val isToday = p[dateKey] == today()
-        val stations = if (isToday) p[calmKey] ?: 0 else 0
-        val tries = if (isToday) p[calmTriesKey] ?: 0 else 0
-        val xp = p[calmXpKey] ?: 0
-        val (level, toNext) = levelFor(xp)
-        CalmProgress(stations, tries, level, toNext)
+        val (level, toNext) = levelFor(p[calmXpKey] ?: 0)
+        CalmProgress(
+            checkpoint = p[checkpointKey] ?: 0,
+            secondsToday = if (isToday) p[secondsKey] ?: 0 else 0,
+            level = level,
+            toNext = toNext,
+            runs = p[runsKey] ?: 0,
+        )
     }
 
-    /** Station geschafft. Gibt (altes Level, neues Level) zurueck. */
-    suspend fun completeCalmStation(station: Int, passed: Boolean): Pair<Int, Int> {
+    suspend fun addCalmSeconds(sec: Int) {
+        if (sec <= 0) return
+        store.edit { p ->
+            val t = today()
+            val base = if (p[dateKey] == t) p[secondsKey] ?: 0 else 0
+            p[dateKey] = t
+            p[secondsKey] = (base + sec).coerceAtMost(CALM_DAILY_SECONDS)
+        }
+    }
+
+    /** Minute [minute] (1..10) geschafft. Gibt (altes Level, neues Level) zurueck. */
+    suspend fun completeCalmMinute(minute: Int): Pair<Int, Int> {
         val before = levelFor(store.data.first()[calmXpKey] ?: 0).first
         var after = before
         store.edit { p ->
-            val t = today()
-            val isToday = p[dateKey] == t
-            val current = if (isToday) p[calmKey] ?: 0 else 0
-            val tries = if (isToday) p[calmTriesKey] ?: 0 else 0
-            p[dateKey] = t
-            p[calmTriesKey] = tries + 1
-            if (passed) {
-                p[calmKey] = (current + 1).coerceAtMost(STATIONS_PER_DAY)
-                val xp = (p[calmXpKey] ?: 0) + station.coerceIn(1, STATIONS_PER_DAY)
-                p[calmXpKey] = xp
-                after = levelFor(xp).first
-            } else {
-                p[calmKey] = current
-            }
+            val xp = (p[calmXpKey] ?: 0) + minute.coerceIn(1, MINUTES)
+            p[calmXpKey] = xp
+            after = levelFor(xp).first
+            if (minute >= MINUTES) {
+                p[checkpointKey] = 0
+                p[runsKey] = (p[runsKey] ?: 0) + 1
+            } else p[checkpointKey] = minute
         }
         return before to after
     }
 
     companion object {
-        const val STATIONS_PER_DAY = 10
+        const val MINUTES = 10
+        const val CALM_DAILY_SECONDS = 600
 
         /** Punkte, die man von Level [level] zum naechsten braucht. */
         fun needed(level: Int): Int = (55.0 * 1.25.pow(level - 1)).roundToInt()
@@ -91,22 +102,17 @@ internal class PathStore(context: Context) {
     }
 }
 
-/** Was man auf einem Level an innerer Ruhe dazugewonnen hat (die Helfer sind man selbst). */
+/** Was man auf einem Level an innerer Ruhe dazugewonnen hat. */
 internal class CalmAbilities(level: Int) {
-    /** Sekunden, die Wellen/Verlockungen vorher angekuendigt werden (0 = keine Vorahnung) */
-    val foresight: Float = if (level >= 2) 1.5f + (level - 2) * 0.25f else 0f
-    /** Fehler, die pro Station abgefangen werden */
-    val shields: Int = if (level >= 3) 1 + (level - 3) / 2 else 0
-    /** zusaetzliche Toleranz im Atemtakt (Sekunden) */
-    val calmBreath: Float = if (level >= 4) 0.15f + (level - 4) * 0.03f else 0f
+    /** Schildenergie (Sekunden, die das Schild haelt) */
+    val shieldMax: Float = 2.5f + (level - 1) * 0.6f
+    /** Gruene Lichter werden ab Level 3 angezogen */
+    val magnet: Float = if (level >= 3) 0.06f + (level - 3) * 0.015f else 0f
 
     companion object {
         fun unlocked(level: Int): String = when {
-            level == 2 -> "Vorahnung – du spürst, wenn eine Welle kommt."
-            level == 3 -> "Schild – eine Welle pro Station prallt an deiner Ruhe ab."
-            level == 4 -> "Ruhiger Atem – der Atemweg wird etwas breiter."
-            level % 2 == 1 -> "Ein weiteres Schild – deine Ruhe trägt dich weiter."
-            else -> "Deine Vorahnung reicht weiter."
+            level == 3 -> "Grünes Licht findet zu dir – und dein Schild hält länger."
+            else -> "Deine Schildenergie wächst – das Schild hält länger."
         }
     }
 }

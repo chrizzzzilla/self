@@ -77,7 +77,7 @@ private enum class TrainingGame(@StringRes val label: Int, val color: Color) {
 fun GameScreen(modifier: Modifier = Modifier, onOverlayChanged: (Boolean) -> Unit = {}) {
     val context = LocalContext.current
     val store = remember { PathStore(context) }
-    val calm by store.calm.collectAsStateWithLifecycle(initialValue = CalmProgress(0, 0, 1, 0f))
+    val calm by store.calm.collectAsStateWithLifecycle(initialValue = CalmProgress(0, 0, 1, 0f, 0))
     var playing by remember { mutableStateOf(false) }
     var workshop by remember { mutableStateOf(false) }
     val workshopStore = remember { WorkshopStore(context) }
@@ -116,8 +116,7 @@ fun GameScreen(modifier: Modifier = Modifier, onOverlayChanged: (Boolean) -> Uni
                     if (g == TrainingGame.CALM) {
                         TrainingTile(
                             game = g, size = small, level = calm.level, fill = calm.toNext,
-                            done = calm.attemptsToday >= PathStore.STATIONS_PER_DAY ||
-                                calm.stationsToday >= PathStore.STATIONS_PER_DAY,
+                            done = calm.secondsToday >= PathStore.CALM_DAILY_SECONDS,
                             index = i,
                             onOpen = { playing = true },
                         )
@@ -145,24 +144,19 @@ fun GameScreen(modifier: Modifier = Modifier, onOverlayChanged: (Boolean) -> Uni
     }
 
     if (playing) {
-        val station = (calm.stationsToday + 1).coerceIn(1, PathStore.STATIONS_PER_DAY)
-        // neue Runde je Versuch (auch bei gleicher Station)
-        androidx.compose.runtime.key(calm.attemptsToday) {
-            CalmGame(
-                level = station,
-                abilities = CalmAbilities(calm.level),
-                onComplete = { passed ->
-                    scope.launch {
-                        val (before, after) = store.completeCalmStation(station, passed)
-                        if (after > before) levelUp = after
-                        // weiter zur naechsten Station – erst am Tageslimit zurueck
-                        val p = store.calm.first()
-                        if (p.attemptsToday >= PathStore.STATIONS_PER_DAY || p.stationsToday >= PathStore.STATIONS_PER_DAY) playing = false
-                    }
-                },
-                onExit = { playing = false },
-            )
-        }
+        CalmGame(
+            startMinute = calm.checkpoint,
+            secondsLeft = PathStore.CALM_DAILY_SECONDS - calm.secondsToday,
+            abilities = CalmAbilities(calm.level),
+            onMinuteDone = { minute ->
+                scope.launch {
+                    val (before, after) = store.completeCalmMinute(minute)
+                    if (after > before) levelUp = after
+                }
+            },
+            onTime = { sec -> scope.launch { store.addCalmSeconds(sec) } },
+            onExit = { playing = false },
+        )
         levelUp?.let { lv ->
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 LevelUpBanner(lv, CalmAbilities.unlocked(lv), Modifier) { levelUp = null }

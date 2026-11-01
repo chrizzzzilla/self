@@ -16,9 +16,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +45,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.chrizzzzilla.self.core.design.AmbientColors
@@ -50,43 +53,70 @@ import com.chrizzzzilla.self.core.design.Manrope
 import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlin.random.Random
 
-private const val ROUND_SECONDS = 60f
-private const val LEAD_IN = 2.5f
+private const val MINUTE = 60f
 
-/** Die 10 Stationen eines Tages – von ganz still bis Sturm. */
+/** Die 10 Minuten eines Durchgangs – von ganz still bis Sturm. */
 private val LEVEL_NAMES = arrayOf(
     "STILLER SEE", "SEE AM ABEND", "RUHIGER STRAND", "STRAND IM WIND", "BRANDUNG",
     "IM BOOT", "DÜNUNG", "AUFKOMMENDER WIND", "STURM", "IM HERZEN DES STURMS",
 )
 
-/** Wellen-/Windstaerke je Station */
+/** Wellen-/Windstaerke je Minute */
 private val WAVES = floatArrayOf(0f, 0.05f, 0.15f, 0.3f, 0.5f, 0.6f, 0.7f, 0.8f, 0.95f, 1f)
 
+private val RED = Color(0xFFFF5A5A)
+private val GREEN = Color(0xFF7FF0A0)
+
 /**
- * Spiel „Ruhe“: einer leuchtenden Atemlinie folgen.
- *  Rechter Daumen halten = einatmen (das Licht steigt) · linker Daumen halten = ausatmen (es sinkt) ·
- *  nichts = Atem anhalten. Je naeher am Atemweg, desto heller wird die Welt.
- * Ab „Brandung“ schieben Wellen das Licht weg (Vorahnung und Schild helfen).
+ * Spiel „Ruhe“: ein Licht gleitet durch die Welt.
+ *  Linker Daumen halten = steigen, loslassen = sanft sinken.
+ *  Rechter Daumen halten = Schild (verbraucht Schildenergie) – damit kommt man durch Rotes.
+ *  Rotes ausweichen, Gruenes sammeln (fuellt das Schild).
+ * Ein Durchgang dauert 10 Minuten, jede Minute wird es schwerer und ist ein Checkpoint.
+ * Getroffen → zurueck an den Anfang der Minute.
  */
 @Composable
-internal fun CalmGame(level: Int, abilities: CalmAbilities, onComplete: (passed: Boolean) -> Unit, onExit: () -> Unit) {
-    val state = remember(level) { BreathState(level.coerceIn(1, 10), abilities) }
+internal fun CalmGame(
+    startMinute: Int,
+    secondsLeft: Int,
+    abilities: CalmAbilities,
+    onMinuteDone: (minute: Int) -> Unit,
+    onTime: (seconds: Int) -> Unit,
+    onExit: () -> Unit,
+) {
+    val state = remember { FlightState(startMinute.coerceIn(0, 9), secondsLeft.toFloat(), abilities.shieldMax, abilities.magnet) }
     val tick = remember { mutableFloatStateOf(0f) }
-    val showResult = remember(level) { mutableStateOf(false) }
+    val ended = remember { mutableStateOf<String?>(null) }
     val measurer = rememberTextMeasurer()
-    BackHandler(onBack = onExit)
+    val minuteDone by rememberUpdatedState(onMinuteDone)
+    val timeCb by rememberUpdatedState(onTime)
+    LaunchedEffect(abilities.shieldMax) { state.shieldMax = abilities.shieldMax; state.magnet = abilities.magnet }
+
+    fun leave() {
+        timeCb(state.takeSeconds())
+        onExit()
+    }
+    BackHandler { leave() }
 
     LaunchedEffect(state) {
         var last = 0L
+        var report = 0f
         while (true) {
             withFrameNanos { now ->
                 val dt = if (last == 0L) 0f else ((now - last) / 1e9f).coerceAtMost(0.05f)
                 last = now
                 state.step(dt)
                 tick.floatValue = state.t
-                if (state.finished && state.finishT > 1.2f) showResult.value = true
+                state.completed?.let { m -> state.completed = null; minuteDone(m) }
+                report += dt
+                if (report > 5f) { report = 0f; timeCb(state.takeSeconds()) }
+                if (state.end != null && ended.value == null) {
+                    timeCb(state.takeSeconds())
+                    ended.value = state.end
+                }
             }
         }
     }
@@ -113,17 +143,10 @@ internal fun CalmGame(level: Int, abilities: CalmAbilities, onComplete: (passed:
                 },
         ) {
             tick.floatValue
-            drawBreath(state, measurer)
+            drawFlight(state, measurer)
         }
-        if (showResult.value) {
-            ResultCard(
-                passed = state.passed,
-                percent = state.percent,
-                goal = state.goalPercent,
-                station = state.level,
-                onContinue = { onComplete(state.passed) },
-                modifier = Modifier.align(Alignment.Center),
-            )
+        ended.value?.let { text ->
+            EndCard(text, state, Modifier.align(Alignment.Center)) { leave() }
         }
         Box(
             Modifier
@@ -133,7 +156,7 @@ internal fun CalmGame(level: Int, abilities: CalmAbilities, onComplete: (passed:
                 .clip(CircleShape)
                 .background(Color(0x22FFFFFF))
                 .border(1.dp, AmbientColors.Light.copy(alpha = 0.16f), CircleShape)
-                .clickable(onClick = onExit),
+                .clickable { leave() },
             contentAlignment = Alignment.Center,
         ) {
             Canvas(Modifier.size(14.dp)) {
@@ -149,138 +172,196 @@ internal fun CalmGame(level: Int, abilities: CalmAbilities, onComplete: (passed:
 // Spiellogik
 // ==========================================================================================
 
-/** Abschnitt des Atemwegs: von y0 nach y1 zwischen t0 und t1. phase: 1 ein, 0 halten, -1 aus */
-private class Seg(val t0: Float, val t1: Float, val y0: Float, val y1: Float, val phase: Int) {
-    val slope: Float = if (t1 > t0) abs(y1 - y0) / (t1 - t0) else 0f
+/** Ein Ding in der Welt. x in Bildbreiten (0 = links), y 0 (unten) … 1 (oben). */
+private class Obj(var x: Float, var y: Float, val r: Float, val red: Boolean, val vx: Float = 0f, val wobble: Float = 0f, val phase: Float = 0f, val vy: Float = 0f) {
+    var gone = 0f
+    val baseY = y
 }
 
-private class Push(val at: Float, val dir: Float) {
-    var done = false
-}
-
-private class BreathState(val level: Int, val abilities: CalmAbilities) {
-    val d = (level - 1) / 9f
-    val waves = WAVES[level - 1]
-    private val rnd = Random(level * 31 + System.nanoTime().toInt())
+private class FlightState(startMinute: Int, var secondsLeft: Float, var shieldMax: Float, var magnet: Float) {
+    var minute = startMinute
+    private val startedAt = startMinute
+    var tm = 0f
     var t = 0f
-    var finished = false
-    var finishT = 0f
+    val level: Int get() = minute + 1
+    val waves: Float get() = WAVES[minute.coerceIn(0, 9)]
+    var lightning = 0f
+    private var nextFlash = 5f
+    private var rnd = Random(System.nanoTime())
 
     val left = mutableSetOf<Long>()
     val right = mutableSetOf<Long>()
 
-    /** Lage des Lichts 0 (unten) … 1 (oben) */
-    var y = 0.25f
-    private var v = 0f
-    /** wie nah man gerade am Atemweg ist (geglaettet) 0..1 */
-    var close = 0.5f
-    private var scoreAcc = 0f
+    var y = 0.5f
+    private var vy = 0f
+    var energy = shieldMax
+    var shielding = false
+    val objs = ArrayList<Obj>()
+    var aspect = 1.6f
 
-    val tol = 0.17f - 0.06f * d + abilities.calmBreath * 0.2f
-    private val segs = ArrayList<Seg>()
-    private val pushes = ArrayList<Push>()
-    var shieldsLeft = abilities.shields
-    var shieldFlash = 0f
-    private var pushVel = 0f
-    var lightning = 0f
-    private var nextFlash = 6f
+    var dying = 0f
+    var banner = 0f
+    var greens = 0
+    var hits = 0
+    var completed: Int? = null
+    var end: String? = null
+    private var played = 0f
 
-    val trail = FloatArray(240) { 0.25f }
+    private var nextRed = 1.5f
+    private var nextGreen = 2.5f
+    private var nextGate = 8f
+    private var nextRain = 0f
+    var gust = 0f
+
+    val trail = FloatArray(200) { 0.5f }
     var trailHead = 0
     private var trailAcc = 0f
+    private var prevY = 0.5f
 
-    init {
-        var yy = 0.25f
-        segs += Seg(0f, LEAD_IN, yy, yy, 0)
-        var tt = LEAD_IN
-        while (tt < ROUND_SECONDS + 15f) {
-            val top = (0.74f + (rnd.nextFloat() - 0.5f) * 0.24f * d).coerceIn(0.55f, 0.88f)
-            val bottom = (0.24f + (rnd.nextFloat() - 0.5f) * 0.18f * d).coerceIn(0.12f, 0.36f)
-            val inhale = (top - yy) / (0.12f + rnd.nextFloat() * 0.04f)
-            segs += Seg(tt, tt + inhale, yy, top, 1); tt += inhale; yy = top
-            val h1 = 0.8f + rnd.nextFloat() * (0.6f + d * 1.2f)
-            segs += Seg(tt, tt + h1, yy, yy, 0); tt += h1
-            val exhale = (yy - bottom) / (0.095f + rnd.nextFloat() * 0.035f)
-            segs += Seg(tt, tt + exhale, yy, bottom, -1); tt += exhale; yy = bottom
-            val h2 = 0.8f + rnd.nextFloat() * (0.5f + d * 1.0f)
-            segs += Seg(tt, tt + h2, yy, yy, 0); tt += h2
-        }
-        if (waves >= 0.5f) {
-            var p = 8f + rnd.nextFloat() * 4f
-            while (p < ROUND_SECONDS - 4f) {
-                pushes += Push(p, if (rnd.nextBoolean()) 1f else -1f)
-                p += 9f - waves * 4f + rnd.nextFloat() * 4f
-            }
-        }
+    val minutesDone: Int get() = minute - startedAt
+
+    /** gespielte, noch nicht gemeldete Sekunden */
+    fun takeSeconds(): Int {
+        val s = played.toInt()
+        played -= s
+        return s
     }
 
-    private fun seg(at: Float): Seg = segs.firstOrNull { at < it.t1 } ?: segs.last()
-
-    fun target(at: Float): Float {
-        val s = seg(at)
-        if (s.t1 <= s.t0) return s.y1
-        val f = ((at - s.t0) / (s.t1 - s.t0)).coerceIn(0f, 1f)
-        // fast linear, nur sanfte Ecken – so bleibt das Tempo gleichmaessig und man kann folgen
-        val e = 0.75f * f + 0.25f * (f * f * (3f - 2f * f))
-        return s.y0 + (s.y1 - s.y0) * e
+    private fun resetMinute() {
+        tm = 0f
+        objs.clear()
+        y = 0.5f; vy = 0f; prevY = 0.5f
+        trail.fill(0.5f)
+        energy = shieldMax
+        nextRed = 2f; nextGreen = 2.5f; nextGate = 7f; nextRain = 3f
+        rnd = Random(System.nanoTime())
     }
 
-    fun phase(at: Float): Int = seg(at).phase
-
-    /** Tempo des Lichts: passt sich dem aktuellen (oder naechsten) Ein-/Ausatmen an, etwas schneller zum Aufholen */
-    private fun rate(ph: Int): Float {
-        val cur = seg(t)
-        val s = if (cur.phase == ph) cur else segs.firstOrNull { it.t0 >= t && it.phase == ph } ?: cur
-        return (s.slope * 1.25f).coerceIn(0.07f, 0.3f)
-    }
-    private var prevY = 0.25f
-
-    val percent: Int get() = (scoreAcc / (ROUND_SECONDS - LEAD_IN) * 100f).toInt().coerceIn(0, 100)
-    val goalPercent: Int get() = (55f + d * 10f).toInt()
-    val passed: Boolean get() = percent >= goalPercent
-
-    /** naechste Welle (fuer die Vorahnung) */
-    fun upcomingPush(): Push? = pushes.firstOrNull { !it.done && it.at > t }
+    private val speed: Float get() = 0.2f + 0.025f * minute
 
     fun step(dt: Float) {
         t += dt
         lightning = (lightning - dt * 2.5f).coerceAtLeast(0f)
-        shieldFlash = (shieldFlash - dt * 1.5f).coerceAtLeast(0f)
-        if (level >= 9 && t > nextFlash) { lightning = 1f; nextFlash = t + 5f + rnd.nextFloat() * 7f }
-        if (finished) { finishT += dt; return }
+        banner = (banner - dt).coerceAtLeast(0f)
+        if (minute >= 8 && t > nextFlash) { lightning = 1f; nextFlash = t + 5f + rnd.nextFloat() * 7f }
+        if (end != null) return
+        played += dt
+        secondsLeft -= dt
+        if (secondsLeft <= 0f) { end = "Für heute genug – dein Licht ruht bis morgen."; return }
 
-        val up = right.isNotEmpty()
-        val down = left.isNotEmpty()
-        val want = when {
-            up && !down -> rate(1)
-            down && !up -> -rate(-1)
-            else -> 0f
+        if (dying > 0f) {
+            dying -= dt
+            if (dying <= 0f) { resetMinute(); banner = 2.2f }
+            return
         }
-        v += (want - v) * min(1f, dt * 6f)
-        for (p in pushes) {
-            if (!p.done && t >= p.at) {
-                p.done = true
-                if (shieldsLeft > 0) { shieldsLeft--; shieldFlash = 1f } else pushVel += p.dir * 0.32f
+
+        // ---- Licht bewegen: steigen solange links gehalten, sonst sanft sinken ----
+        val lift = left.isNotEmpty()
+        val acc = if (lift) 1.5f else -1.0f
+        vy += acc * dt
+        vy *= (1f - min(1f, dt * 2.2f))
+        vy = vy.coerceIn(-0.55f, 0.6f)
+        // Wind ab Minute 7
+        gust = if (minute >= 6) sin(t * 0.45f) * 0.5f + sin(t * 1.3f) * 0.3f else 0f
+        y += (vy + gust * 0.12f * waves) * dt
+        if (y < 0.05f) { y = 0.05f; vy = 0f }
+        if (y > 0.95f) { y = 0.95f; vy = 0f }
+
+        // ---- Schild ----
+        shielding = right.isNotEmpty() && energy > 0f
+        if (shielding) energy = (energy - dt).coerceAtLeast(0f) else energy = (energy + dt * 0.08f).coerceAtMost(shieldMax)
+
+        // ---- Welt bewegen + erzeugen ----
+        tm += dt
+        val m = minute
+        val calmEnd = tm > MINUTE - 3f
+        for (o in objs) {
+            o.x -= (speed + o.vx) * dt
+            if (o.wobble > 0f) o.y = (o.baseY + sin(t * 1.4f + o.phase) * o.wobble).coerceIn(0.03f, 0.97f)
+            if (o.vy != 0f) o.y += o.vy * dt
+            if (!o.red && magnet > 0f) {
+                val dx = (o.x - 0.25f) * aspect
+                val dy = o.y - y
+                val dist = sqrt(dx * dx + dy * dy)
+                if (dist < magnet + 0.12f && dist > 0.001f) { o.x -= dx / dist * dt * 0.4f / aspect; o.y -= dy / dist * dt * 0.4f }
+            }
+            if (o.gone > 0f) o.gone += dt
+        }
+        objs.removeAll { it.x < -0.1f || it.gone > 0.5f || it.y < -0.1f }
+        if (!calmEnd) {
+            nextRed -= dt
+            if (nextRed <= 0f) {
+                nextRed = (1.5f - 0.09f * m) * (0.7f + rnd.nextFloat() * 0.6f)
+                val wob = if (m >= 2 && rnd.nextFloat() < 0.4f + m * 0.04f) 0.06f + rnd.nextFloat() * 0.12f else 0f
+                objs += Obj(1.1f, 0.08f + rnd.nextFloat() * 0.84f, 0.035f + rnd.nextFloat() * 0.02f, true, wobble = wob, phase = rnd.nextFloat() * 6f)
+            }
+            nextGreen -= dt
+            if (nextGreen <= 0f) {
+                nextGreen = 2f + rnd.nextFloat() * 1.5f
+                objs += Obj(1.1f, 0.1f + rnd.nextFloat() * 0.8f, 0.025f, false, phase = rnd.nextFloat() * 6f)
+            }
+            if (m >= 4) {
+                nextGate -= dt
+                if (nextGate <= 0f) {
+                    nextGate = 6.5f - 0.35f * m + rnd.nextFloat() * 2f
+                    val gap = 0.34f - 0.015f * m
+                    val c = gap / 2f + 0.06f + rnd.nextFloat() * (0.88f - gap)
+                    var yy = 0.04f
+                    while (yy < 0.98f) {
+                        if (abs(yy - c) > gap / 2f) objs += Obj(1.15f, yy, 0.03f, true)
+                        yy += 0.075f
+                    }
+                    objs += Obj(1.15f, c, 0.025f, false)
+                }
+            }
+            if (m >= 8) {
+                nextRain -= dt
+                if (nextRain <= 0f) {
+                    nextRain = 0.5f + rnd.nextFloat() * 0.6f
+                    objs += Obj(0.4f + rnd.nextFloat() * 0.7f, 1.05f, 0.022f, true, vx = 0.05f, vy = -0.25f - rnd.nextFloat() * 0.1f)
+                }
             }
         }
-        pushVel *= (1f - min(1f, dt * 2.2f))
-        val sway = sin(t * 1.3f) * 0.012f * waves
-        y = (y + (v + pushVel + sway) * dt).coerceIn(0.02f, 0.98f)
 
-        val c = (1f - abs(y - target(t)) / tol).coerceIn(0f, 1f)
-        close += (c - close) * min(1f, dt * 3f)
-        if (t > LEAD_IN) scoreAcc += dt * c
-
-        // Spur gleichmaessig nachzeichnen (zwischen den Frames interpolieren, sonst „huepft“ sie)
-        trailAcc += dt
-        val m = (trailAcc * 60f).toInt()
-        for (k in 0 until m) {
-            trailHead = (trailHead + 1) % trail.size
-            trail[trailHead] = prevY + (y - prevY) * (k + 1) / m
+        // ---- Treffer ----
+        val pr = 0.028f
+        for (o in objs) {
+            if (o.gone > 0f) continue
+            val dx = (o.x - 0.25f) * aspect
+            val dy = o.y - y
+            if (dx * dx + dy * dy < (o.r + pr) * (o.r + pr)) {
+                if (!o.red) {
+                    o.gone = 0.01f
+                    greens++
+                    energy = (energy + 0.6f).coerceAtMost(shieldMax)
+                } else if (shielding) {
+                    o.gone = 0.01f
+                } else {
+                    hits++
+                    dying = 1.6f
+                    return
+                }
+            }
         }
-        trailAcc -= m / 60f
-        if (m > 0) prevY = y
-        if (t >= ROUND_SECONDS) { finished = true; finishT = 0f }
+
+        // ---- Spur ----
+        trailAcc += dt
+        val n = (trailAcc * 60f).toInt()
+        for (k in 0 until n) {
+            trailHead = (trailHead + 1) % trail.size
+            trail[trailHead] = prevY + (y - prevY) * (k + 1) / n
+        }
+        trailAcc -= n / 60f
+        if (n > 0) prevY = y
+
+        // ---- Minute geschafft = Checkpoint ----
+        if (tm >= MINUTE) {
+            completed = minute + 1
+            if (minute >= 9) { end = "Durchgang geschafft – zehn Minuten Ruhe."; return }
+            minute++
+            tm = 0f
+            banner = 2.6f
+        }
     }
 }
 
@@ -291,7 +372,7 @@ private class BreathState(val level: Int, val abilities: CalmAbilities) {
 private fun DrawScope.cGlow(c: Offset, radius: Float, color: Color, alpha: Float) {
     if (radius <= 0f) return
     drawCircle(
-        Brush.radialGradient(listOf(color.copy(alpha = alpha), color.copy(alpha = alpha * 0.35f), Color.Transparent), center = c, radius = radius),
+        Brush.radialGradient(listOf(color.copy(alpha = alpha.coerceIn(0f, 1f)), color.copy(alpha = (alpha * 0.35f).coerceIn(0f, 1f)), Color.Transparent), center = c, radius = radius),
         radius = radius, center = c, blendMode = BlendMode.Plus,
     )
 }
@@ -301,40 +382,51 @@ private fun cHash(i: Int): Float {
     return v - kotlin.math.floor(v)
 }
 
-private fun DrawScope.drawBreath(s: BreathState, measurer: TextMeasurer) {
+private fun DrawScope.drawFlight(s: FlightState, measurer: TextMeasurer) {
     val w = size.width
     val h = size.height
+    s.aspect = w / h
     val t = s.t
-    val bright = 0.35f + 0.65f * s.close
-    drawWorld(s, bright)
+    drawWorld(s, 0.85f)
+    fun sx(x: Float) = x * w
+    fun sy(y: Float) = h * (0.92f - y * 0.84f)
+    val unit = h * 0.84f
 
-    // ---- Atemweg ----
-    val px = w * 0.3f
-    val perSec = w * 0.085f
-    fun sy(y: Float) = h * 0.84f - y * h * 0.66f
-    val tolPx = s.tol * h * 0.66f
-    val band = Path()
-    val bandLow = ArrayList<Offset>()
-    val line = Path()
-    var x = 0f
-    var first = true
-    while (x <= w) {
-        val at = t + (x - px) / perSec
-        val yy = sy(s.target(at))
-        if (first) { line.moveTo(x, yy); band.moveTo(x, yy - tolPx) } else { line.lineTo(x, yy); band.lineTo(x, yy - tolPx) }
-        bandLow += Offset(x, yy + tolPx)
-        first = false
-        x += 6f * density
+    // Wind sichtbar machen
+    if (s.minute >= 6) {
+        for (k in 0 until 18) {
+            val q = (t * 0.6f + cHash(k + 40)) % 1f
+            val x = w * (1.1f - q * 1.3f)
+            val y = sy(cHash(k + 50)) - s.gust * unit * 0.05f * q
+            drawLine(Color(0xFFE8F0FF).copy(alpha = 0.12f * sin(q * 3.14f)), Offset(x, y), Offset(x + w * 0.06f, y + s.gust * unit * 0.02f), strokeWidth = 1f * density, blendMode = BlendMode.Plus)
+        }
     }
-    for (i in bandLow.indices.reversed()) band.lineTo(bandLow[i].x, bandLow[i].y)
-    band.close()
-    drawPath(band, AmbientColors.Gold.copy(alpha = 0.05f + 0.05f * s.close), blendMode = BlendMode.Plus)
-    drawPath(line, AmbientColors.Gold.copy(alpha = 0.18f), style = Stroke(10f * density, cap = StrokeCap.Round), blendMode = BlendMode.Plus)
-    drawPath(line, AmbientColors.Gold.copy(alpha = 0.85f), style = Stroke(1.8f * density, cap = StrokeCap.Round))
-    // Vergangenes abdunkeln
-    drawRect(Brush.horizontalGradient(listOf(Color(0xCC05060A), Color.Transparent), startX = 0f, endX = px), size = Size(px, h))
 
-    // ---- eigene Spur ----
+    // Dinge
+    for (o in s.objs) {
+        val c = Offset(sx(o.x), sy(o.y))
+        val r = o.r * unit
+        val fade = if (o.gone > 0f) (1f - o.gone / 0.5f).coerceIn(0f, 1f) else 1f
+        val grow = if (o.gone > 0f) 1f + o.gone * 3f else 1f
+        if (o.red) {
+            val p = 0.85f + 0.15f * sin(t * 4f + o.phase)
+            cGlow(c, r * 2.6f * p * grow, RED, 0.45f * fade)
+            drawCircle(Color(0xFFFF8A80).copy(alpha = 0.9f * fade), radius = r * 0.55f, center = c)
+            drawCircle(RED.copy(alpha = 0.6f * fade), radius = r, center = c, style = Stroke(1.3f * density), blendMode = BlendMode.Plus)
+        } else {
+            val p = 0.8f + 0.2f * sin(t * 3f + o.phase)
+            cGlow(c, r * 3f * p * grow, GREEN, 0.5f * fade)
+            drawCircle(Color(0xFFE0FFE8).copy(alpha = fade), radius = r * 0.35f, center = c)
+            for (k in 0 until 4) {
+                val a = t * 1.5f + k * 1.57f + o.phase
+                drawCircle(GREEN.copy(alpha = 0.7f * fade), radius = 1.4f * density, center = c + Offset(kotlin.math.cos(a), sin(a)) * (r * 1.3f), blendMode = BlendMode.Plus)
+            }
+        }
+    }
+
+    // eigene Spur
+    val px = sx(0.25f)
+    val perSec = w * (0.2f + 0.025f * s.minute)
     val trail = Path()
     val n = s.trail.size
     for (k in 0 until n) {
@@ -344,81 +436,89 @@ private fun DrawScope.drawBreath(s: BreathState, measurer: TextMeasurer) {
         val ty = sy(s.trail[idx])
         if (k == 0) trail.moveTo(tx, ty) else trail.lineTo(tx, ty)
     }
-    drawPath(trail, AmbientColors.Arty.copy(alpha = 0.3f), style = Stroke(8f * density, cap = StrokeCap.Round), blendMode = BlendMode.Plus)
-    drawPath(trail, AmbientColors.ArtyText, style = Stroke(2f * density, cap = StrokeCap.Round))
+    val life = if (s.dying > 0f) (s.dying / 1.6f).coerceIn(0f, 1f) else 1f
+    drawPath(trail, AmbientColors.Arty.copy(alpha = 0.3f * life), style = Stroke(8f * density, cap = StrokeCap.Round), blendMode = BlendMode.Plus)
+    drawPath(trail, AmbientColors.ArtyText.copy(alpha = life), style = Stroke(2f * density, cap = StrokeCap.Round))
 
-    // ---- das Licht ----
+    // das Licht
     val me = Offset(px, sy(s.y))
-    cGlow(me, h * (0.08f + 0.1f * s.close), lerp(AmbientColors.Arty, AmbientColors.Gold, s.close), 0.6f)
-    drawCircle(Color(0xFFF4F0FF), radius = 6f * density, center = me)
-    if (s.shieldFlash > 0f) {
-        drawCircle(
-            AmbientColors.ArtyText.copy(alpha = s.shieldFlash), radius = h * (0.05f + (1f - s.shieldFlash) * 0.06f), center = me,
-            style = Stroke(2f * density), blendMode = BlendMode.Plus,
-        )
+    cGlow(me, unit * 0.12f * (0.3f + 0.7f * life), lerp(AmbientColors.Gold, AmbientColors.Light, 0.3f), 0.55f * life)
+    drawCircle(Color(0xFFF4F0FF).copy(alpha = life), radius = 6f * density, center = me)
+    if (s.shielding) {
+        val pr = unit * 0.06f * (1f + 0.05f * sin(t * 12f))
+        cGlow(me, pr * 1.6f, AmbientColors.Arty, 0.35f)
+        drawCircle(AmbientColors.ArtyText.copy(alpha = 0.9f), radius = pr, center = me, style = Stroke(2f * density), blendMode = BlendMode.Plus)
+    }
+    if (s.dying > 0f) {
+        val e = 1f - life
+        drawCircle(RED.copy(alpha = (1f - e) * 0.6f), radius = unit * (0.04f + e * 0.25f), center = me, style = Stroke(2f * density), blendMode = BlendMode.Plus)
+        drawRect(Color(0xFF020306).copy(alpha = 0.5f * e))
+        val txt = measurer.measure("Zurück zum Checkpoint …", TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Light, fontSize = 22.sp, letterSpacing = 2.sp, color = AmbientColors.Light.copy(alpha = e)))
+        drawText(txt, topLeft = Offset(w / 2f - txt.size.width / 2f, h * 0.42f))
     }
 
-    // ---- Hinweiswort ----
-    val ph = s.phase(t + 0.4f)
-    val word = when { t < LEAD_IN -> "bereit …"; ph > 0 -> "einatmen"; ph < 0 -> "ausatmen"; else -> "halten" }
-    val layout = measurer.measure(word, TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Light, fontSize = 20.sp, letterSpacing = 3.sp, color = AmbientColors.Light.copy(alpha = 0.85f)))
-    drawText(layout, topLeft = Offset(px + 28f * density, me.y - layout.size.height - 18f * density))
+    // Daumenfelder
+    flightZone(Offset(w * 0.1f, h * 0.86f), s.left.isNotEmpty(), AmbientColors.Gold, "STEIGEN", up = true, measurer = measurer)
+    flightZone(Offset(w * 0.9f, h * 0.86f), s.shielding, AmbientColors.ArtyText, "SCHILD", up = false, measurer = measurer)
+    // Schildenergie (Bogen um das rechte Feld)
+    val rc = Offset(w * 0.9f, h * 0.86f)
+    val rr = size.minDimension * 0.095f
+    drawArc(Color.White.copy(alpha = 0.12f), -90f, 360f, false, topLeft = rc - Offset(rr, rr), size = Size(rr * 2f, rr * 2f), style = Stroke(3f * density))
+    drawArc(
+        AmbientColors.Arty, -90f, 360f * (s.energy / s.shieldMax).coerceIn(0f, 1f), false,
+        topLeft = rc - Offset(rr, rr), size = Size(rr * 2f, rr * 2f), style = Stroke(3f * density, cap = StrokeCap.Round), blendMode = BlendMode.Plus,
+    )
 
-    // ---- Vorahnung einer Welle ----
-    s.upcomingPush()?.let { p ->
-        val fs = s.abilities.foresight
-        if (fs > 0f && p.at - t < fs) {
-            val a = 1f - (p.at - t) / fs
-            val wy = if (p.dir > 0) me.y + h * 0.12f else me.y - h * 0.12f
-            drawArc(
-                AmbientColors.ArtyText.copy(alpha = 0.7f * a), startAngle = if (p.dir > 0) 200f else 20f, sweepAngle = 140f, useCenter = false,
-                topLeft = Offset(px - h * 0.06f, wy - h * 0.06f), size = Size(h * 0.12f, h * 0.12f),
-                style = Stroke(2f * density, cap = StrokeCap.Round), blendMode = BlendMode.Plus,
-            )
-        }
-    }
-
-    // ---- Daumenfelder ----
-    thumbZone(Offset(w * 0.1f, h * 0.88f), s.left.isNotEmpty(), down = true, label = "AUSATMEN", measurer = measurer)
-    thumbZone(Offset(w * 0.9f, h * 0.88f), s.right.isNotEmpty(), down = false, label = "EINATMEN", measurer = measurer)
-
-    // ---- Kopf: Station + Fortschritt ----
+    // Kopf: Minute + Fortschritt (10 Abschnitte)
     val name = measurer.measure(
-        "${s.level} · ${LEVEL_NAMES[s.level - 1]}",
+        "${s.level} · ${LEVEL_NAMES[s.minute.coerceIn(0, 9)]}",
         TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Medium, fontSize = 12.sp, letterSpacing = 4.sp, color = AmbientColors.Light),
     )
     drawText(name, topLeft = Offset(32f * density, 34f * density))
     val x0 = 32f * density
-    val x1 = w * 0.4f
+    val segW = (w * 0.4f - x0) / 10f
     val yb = 34f * density + name.size.height + 12f * density
-    val prog = (t / ROUND_SECONDS).coerceIn(0f, 1f)
-    drawLine(Color.White.copy(alpha = 0.16f), Offset(x0, yb), Offset(x1, yb), strokeWidth = 1.2f * density, cap = StrokeCap.Round)
-    drawLine(AmbientColors.Gold.copy(alpha = 0.8f), Offset(x0, yb), Offset(x0 + (x1 - x0) * prog, yb), strokeWidth = 1.8f * density, cap = StrokeCap.Round)
-    val ruhe = measurer.measure(
-        "Ruhe ${s.percent} % · Ziel ${s.goalPercent} %",
+    for (k in 0 until 10) {
+        val a = Offset(x0 + k * segW + 2f * density, yb)
+        val b = Offset(x0 + (k + 1) * segW - 2f * density, yb)
+        drawLine(Color.White.copy(alpha = 0.14f), a, b, strokeWidth = 2f * density, cap = StrokeCap.Round)
+        val f = when { k < s.minute -> 1f; k == s.minute -> (s.tm / MINUTE).coerceIn(0f, 1f); else -> 0f }
+        if (f > 0f) drawLine(AmbientColors.Gold.copy(alpha = 0.85f), a, Offset(a.x + (b.x - a.x) * f, yb), strokeWidth = 2f * density, cap = StrokeCap.Round)
+    }
+    val info = measurer.measure(
+        "${s.greens} grüne Lichter · noch ${(s.secondsLeft / 60f).toInt() + 1} Min. heute",
         TextStyle(fontFamily = Manrope, fontSize = 11.sp, letterSpacing = 1.sp, color = AmbientColors.Muted),
     )
-    drawText(ruhe, topLeft = Offset(x0, yb + 8f * density))
+    drawText(info, topLeft = Offset(x0, yb + 10f * density))
+
+    // Checkpoint-Banner
+    if (s.banner > 0f) {
+        val a = (s.banner.coerceAtMost(1f)) * (if (s.banner > 2f) (2.6f - s.banner) / 0.6f else 1f)
+        val l1 = measurer.measure("CHECKPOINT", TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Medium, fontSize = 12.sp, letterSpacing = 6.sp, color = AmbientColors.Gold.copy(alpha = a.coerceIn(0f, 1f))))
+        val l2 = measurer.measure(LEVEL_NAMES[s.minute.coerceIn(0, 9)], TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Light, fontSize = 26.sp, letterSpacing = 4.sp, color = AmbientColors.Light.copy(alpha = a.coerceIn(0f, 1f))))
+        drawText(l1, topLeft = Offset(w / 2f - l1.size.width / 2f, h * 0.36f))
+        drawText(l2, topLeft = Offset(w / 2f - l2.size.width / 2f, h * 0.36f + l1.size.height + 8f * density))
+    }
 }
 
-private fun DrawScope.thumbZone(c: Offset, pressed: Boolean, down: Boolean, label: String, measurer: TextMeasurer) {
+private fun DrawScope.flightZone(c: Offset, pressed: Boolean, col: Color, label: String, up: Boolean, measurer: TextMeasurer) {
     val r = size.minDimension * 0.07f
-    val col = if (down) AmbientColors.Gold else AmbientColors.ArtyText
     cGlow(c, r * (if (pressed) 2.2f else 1.4f), col, if (pressed) 0.45f else 0.15f)
     drawCircle(col.copy(alpha = if (pressed) 0.9f else 0.35f), radius = r, center = c, style = Stroke(1.4f * density))
-    val dir = if (down) 1f else -1f
-    val a = Path().apply {
-        moveTo(c.x - r * 0.35f, c.y - dir * r * 0.15f)
-        lineTo(c.x, c.y + dir * r * 0.25f)
-        lineTo(c.x + r * 0.35f, c.y - dir * r * 0.15f)
+    if (up) {
+        val a = Path().apply {
+            moveTo(c.x - r * 0.35f, c.y + r * 0.15f); lineTo(c.x, c.y - r * 0.25f); lineTo(c.x + r * 0.35f, c.y + r * 0.15f)
+        }
+        drawPath(a, col.copy(alpha = if (pressed) 1f else 0.6f), style = Stroke(2f * density, cap = StrokeCap.Round))
+    } else {
+        drawCircle(col.copy(alpha = if (pressed) 1f else 0.6f), radius = r * 0.38f, center = c, style = Stroke(2f * density))
     }
-    drawPath(a, col.copy(alpha = if (pressed) 1f else 0.6f), style = Stroke(2f * density, cap = StrokeCap.Round))
     val l = measurer.measure(label, TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Medium, fontSize = 10.sp, letterSpacing = 3.sp, color = col.copy(alpha = 0.8f)))
-    drawText(l, topLeft = Offset(c.x - l.size.width / 2f, c.y - r - l.size.height - 8f * density))
+    drawText(l, topLeft = Offset(c.x - l.size.width / 2f, c.y - r * 1.45f - l.size.height - 6f * density))
 }
 
 /** Umgebung je Station: dunkel, Silhouetten mit Lichtkanten, Wasser mit Lichtstreifen; ab Station 6 schaukelt der Horizont. */
-private fun DrawScope.drawWorld(s: BreathState, bright: Float) {
+private fun DrawScope.drawWorld(s: FlightState, bright: Float) {
     val w = size.width
     val h = size.height
     val t = s.t
@@ -547,35 +647,31 @@ private fun DrawScope.drawWorld(s: BreathState, bright: Float) {
     drawRect(Color(0xFF020306).copy(alpha = (1f - bright) * 0.55f))
 }
 
-/** Abschluss einer Runde: Ruhe in Prozent, Ziel, geschafft oder nicht – dann weiter (naechste Station oder nochmal). */
+
+/** Ende: Tageszeit aufgebraucht oder Durchgang geschafft. */
 @Composable
-private fun ResultCard(passed: Boolean, percent: Int, goal: Int, station: Int, onContinue: () -> Unit, modifier: Modifier = Modifier) {
+private fun EndCard(text: String, s: FlightState, modifier: Modifier, onBack: () -> Unit) {
     val a = remember { androidx.compose.animation.core.Animatable(0f) }
     LaunchedEffect(Unit) {
         a.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = androidx.compose.animation.core.Spring.StiffnessLow))
     }
     val shape = RoundedCornerShape(30.dp)
-    val accent = if (passed) AmbientColors.ArtyText else AmbientColors.Gold
     Column(
         modifier
             .graphicsLayer { alpha = a.value.coerceIn(0f, 1f); scaleX = 0.85f + 0.15f * a.value; scaleY = 0.85f + 0.15f * a.value }
             .clip(shape)
             .background(Color(0xF0101116))
-            .border(1.dp, accent.copy(alpha = 0.8f), shape)
+            .border(1.dp, AmbientColors.ArtyText.copy(alpha = 0.8f), shape)
             .padding(horizontal = 44.dp, vertical = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            if (passed) "GESCHAFFT" else "NOCH NICHT GANZ",
-            style = TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Medium, fontSize = 13.sp, letterSpacing = 6.sp, color = accent),
-        )
+        Text("RUHE", style = TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Medium, fontSize = 13.sp, letterSpacing = 6.sp, color = AmbientColors.ArtyText))
         Spacer(Modifier.size(14.dp))
-        Text("$percent %", style = TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Light, fontSize = 54.sp, color = AmbientColors.Light))
-        Text("Ruhe · Ziel $goal %", style = TextStyle(fontFamily = Manrope, fontSize = 13.sp, letterSpacing = 1.sp, color = AmbientColors.Muted))
+        Text(text, textAlign = TextAlign.Center, style = TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Light, fontSize = 20.sp, color = AmbientColors.Light))
         Spacer(Modifier.size(12.dp))
         Text(
-            if (passed) "+$station Punkte · weiter zur nächsten Station" else "Atme noch einmal mit – gleiche Station.",
-            style = TextStyle(fontFamily = Manrope, fontSize = 13.sp, color = AmbientColors.Light),
+            "${s.minutesDone} Minuten geschafft · ${s.greens} grüne Lichter",
+            style = TextStyle(fontFamily = Manrope, fontSize = 13.sp, color = AmbientColors.Muted),
         )
         Spacer(Modifier.size(22.dp))
         Box(
@@ -583,13 +679,10 @@ private fun ResultCard(passed: Boolean, percent: Int, goal: Int, station: Int, o
                 .clip(RoundedCornerShape(50))
                 .background(Color(0xFF1E2A55))
                 .border(1.dp, AmbientColors.Arty, RoundedCornerShape(50))
-                .clickable(onClick = onContinue)
+                .clickable(onClick = onBack)
                 .padding(horizontal = 28.dp, vertical = 12.dp),
         ) {
-            Text(
-                if (passed) "WEITER" else "NOCHMAL",
-                style = TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Medium, fontSize = 12.sp, letterSpacing = 4.sp, color = AmbientColors.Light),
-            )
+            Text("ZURÜCK", style = TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Medium, fontSize = 12.sp, letterSpacing = 4.sp, color = AmbientColors.Light))
         }
     }
 }

@@ -433,6 +433,8 @@ internal fun PlantGame(onExit: () -> Unit) {
                 }
             }
 
+            NeedsPanel(d, needs, hour.floatValue, dayOver, Modifier.align(Alignment.TopEnd).padding(top = 84.dp, end = 20.dp).width(maxWidth * 0.32f)) { tool = it }
+
             toast?.let {
                 Box(
                     Modifier
@@ -449,6 +451,57 @@ internal fun PlantGame(onExit: () -> Unit) {
         }
 
         if (stash) GiftStash(d) { stash = false }
+    }
+}
+
+private fun needText(c: Care, d: PlantData, hour: Float): Pair<String, String> = when (c) {
+    Care.WATER -> "Die Erde ist trocken" to "Gießen · auf der Pflanze halten, bis die Anzeige im grünen Feld ist"
+    Care.FEED -> "Sie hat Hunger" to "Düngen · auf die Pflanze tippen"
+    Care.PRUNE -> (if (d.wild > 0) "Wildtriebe wachsen" else "Welkes muss weg") to "Stutzen · die blauen Kreise antippen"
+    Care.TIE -> "Sie kippt zur Seite" to "Anbinden · auf die Pflanze tippen"
+    Care.TURN -> "Sie neigt sich zum Licht" to "Drehen · seitlich über sie wischen"
+    Care.MIST -> "Die Luft ist zu trocken" to "Sprühen · auf die Pflanze tippen"
+    Care.DUST -> "Staub auf den Blättern" to "Abstauben · über die Blätter wischen"
+    Care.TALK -> "Sie fühlt sich allein" to "Zureden · auf ihr halten"
+    Care.REPOT -> "Der Topf ist zu klein" to "Umtopfen · auf dem Topf halten"
+    Care.CURTAIN -> (if (d.sunNow(hour)) "Pralle Sonne" else "Es ist zu dunkel") to (if (d.curtain) "Vorhang · aufs Fenster tippen (öffnen)" else "Vorhang · aufs Fenster tippen (schließen)")
+}
+
+/** Rechts: was sie gerade braucht – mit kurzer Anleitung. Antippen waehlt den Handgriff. */
+@Composable
+private fun NeedsPanel(d: PlantData, needs: Set<Care>, hour: Float, dayOver: Boolean, modifier: Modifier, onPick: (Care) -> Unit) {
+    val shape = RoundedCornerShape(24.dp)
+    Column(
+        modifier
+            .clip(shape)
+            .background(Color(0xB30E0F14))
+            .border(1.dp, Color(0x22FFFFFF), shape)
+            .padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(if (dayOver) "FEIERABEND" else "DAS BRAUCHT SIE", style = pHead.copy(fontSize = 10.sp, color = AmbientColors.Gold))
+        when {
+            dayOver -> Text("Sie wartet bis morgen. Über Nacht wächst sie.", style = pLabel.copy(fontSize = 13.sp))
+            needs.isEmpty() -> Text("Alles gut. Über Nacht wächst sie.", style = pLabel.copy(fontSize = 13.sp, color = Color(0xFF9FF0B8)))
+            else -> Care.entries.filter { it in needs }.forEach { c ->
+                val (what, how) = needText(c, d, hour)
+                Row(
+                    Modifier.clip(RoundedCornerShape(14.dp)).clickable { onPick(c) }.padding(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Canvas(Modifier.size(28.dp)) {
+                        pGlow(center, size.minDimension * 0.7f, AmbientColors.Arty, 0.3f)
+                        drawCareGlyph(c)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(what, style = pLabel.copy(fontSize = 13.sp))
+                        Text(how, style = pLabel.copy(fontSize = 11.sp, color = AmbientColors.Muted, fontWeight = FontWeight.Normal))
+                    }
+                }
+            }
+        }
+        if (!dayOver && d.flowers > 0) Text("Sie blüht – mit Stutzen pflücken.", style = pLabel.copy(fontSize = 12.sp, color = Color(0xFFFF9ABE)))
     }
 }
 
@@ -626,7 +679,7 @@ private fun DrawScope.drawRoom(
     val h = size.height
     drawRect(Color(0xFF08090C))
     // ---- Fenster ----
-    val win = Rect(w * 0.14f, h * 0.06f, w * 0.68f, h * 0.68f)
+    val win = Rect(w * 0.04f, h * 0.04f, w * 0.6f, h * 0.7f)
     geo.window = win
     val night = hour < 6f || hour >= 21f
     val sky = when {
@@ -700,14 +753,14 @@ private fun DrawScope.drawRoom(
     }
     drawPath(shaft, Brush.verticalGradient(listOf(Color(0xFFFFF0D0).copy(alpha = light), Color.Transparent), startY = win.bottom, endY = h), blendMode = BlendMode.Plus)
     // Fensterbank
-    val sillY = h * 0.74f
-    drawRect(Color(0xFF17151B), topLeft = Offset(w * 0.08f, sillY), size = Size(w * 0.68f, h * 0.035f))
-    drawLine(Color(0xFFE8DCC8).copy(alpha = 0.3f + light), Offset(w * 0.08f, sillY), Offset(w * 0.76f, sillY), strokeWidth = 1.2f * density, blendMode = BlendMode.Plus)
+    val sillY = h * 0.78f
+    drawRect(Color(0xFF17151B), topLeft = Offset(w * 0.01f, sillY), size = Size(w * 0.63f, h * 0.035f))
+    drawLine(Color(0xFFE8DCC8).copy(alpha = 0.3f + light), Offset(w * 0.01f, sillY), Offset(w * 0.64f, sillY), strokeWidth = 1.2f * density, blendMode = BlendMode.Plus)
 
     // ---- Topf ----
-    val potCx = w * 0.41f
-    val pw = h * (0.09f + 0.025f * d.pot)
-    val ph = h * (0.08f + 0.012f * d.pot)
+    val potCx = w * 0.32f
+    val pw = h * (0.12f + 0.03f * d.pot)
+    val ph = h * (0.1f + 0.015f * d.pot)
     val potTop = sillY - ph
     geo.pot = Rect(potCx - pw / 2f, potTop, potCx + pw / 2f, sillY)
     val pot = Path().apply {
@@ -730,7 +783,7 @@ private fun DrawScope.drawRoom(
     // ---- Pflanze ----
     val base = Offset(potCx, potTop)
     val stage = d.stage
-    val height = (h * (0.08f + 0.04f * stage)).coerceAtMost(h * 0.56f)
+    val height = (h * (0.12f + 0.05f * stage)).coerceAtMost(h * 0.64f)
     val sag = (d.neededTies - d.ties).coerceAtLeast(0) * 0.14f
     val leanX = -d.lean * 0.3f
     val sway = sin(t * 0.6f) * h * 0.002f
@@ -772,7 +825,7 @@ private fun DrawScope.drawRoom(
         val p = stemAt(s)
         val side = if (i % 2 == 0) 1f else -1f
         val wilted = i / 2 < d.wilted && i % 2 == 0
-        val l = h * 0.038f * (0.8f + stage * 0.04f) * (1.15f - s * 0.45f)
+        val l = h * 0.05f * (0.8f + stage * 0.04f) * (1.15f - s * 0.45f)
         val droop = if (wilted) 0.9f else (0.35f - happy * 0.2f + (if (d.soggy) 0.3f else 0f))
         val ang = side * (1.05f - droop * 0.5f) + sin(t * 0.8f + i) * 0.04f
         val dir = Offset(sin(ang), -cos(ang) + droop * 0.6f)
