@@ -8,6 +8,8 @@ import android.webkit.CookieManager
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebView
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.annotation.DrawableRes
@@ -160,7 +162,7 @@ internal fun StoreBrowser(
                     settings.useWideViewPort = true
                     CookieManager.getInstance().setAcceptCookie(true)
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                    webViewClient = WebViewClient()
+                    webViewClient = SecureUpgradeClient()
                     webChromeClient = object : WebChromeClient() {
                         override fun onProgressChanged(view: WebView?, newProgress: Int) { progress = newProgress }
                         override fun onReceivedTitle(view: WebView?, title: String?) { pageTitle = title.orEmpty() }
@@ -174,6 +176,30 @@ internal fun StoreBrowser(
             },
             onRelease = { it.destroy() },
         )
+    }
+}
+
+/**
+ * Manche Shops (z. B. der Tolino-Webreader) leiten zwischendurch auf http:// um. Android blockiert
+ * unverschluesselte Verbindungen (ERR_CLEARTEXT_NOT_PERMITTED) – statt das zu erlauben, wird der
+ * Aufruf auf https:// umgeschrieben.
+ */
+private class SecureUpgradeClient : WebViewClient() {
+    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+        val url = request.url
+        if (url.scheme == "http") {
+            view.loadUrl(url.buildUpon().scheme("https").build().toString())
+            return true
+        }
+        return false
+    }
+
+    override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+        super.onReceivedError(view, request, error)
+        // Hauptseite per http aufgerufen (z. B. durch Weiterleitung) → einmal mit https versuchen
+        if (request.isForMainFrame && request.url.scheme == "http") {
+            view.loadUrl(request.url.buildUpon().scheme("https").build().toString())
+        }
     }
 }
 
