@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -73,6 +74,7 @@ private val LEVEL_NAMES = arrayOf(
 internal fun CalmGame(level: Int, abilities: CalmAbilities, onComplete: (passed: Boolean) -> Unit, onExit: () -> Unit) {
     val state = remember(level) { CalmState(level.coerceIn(1, 10), abilities) }
     val tick = remember { mutableFloatStateOf(0f) }
+    val showResult = remember(level) { mutableStateOf(false) }
     val measurer = rememberTextMeasurer()
 
     BackHandler(onBack = onExit)
@@ -85,6 +87,7 @@ internal fun CalmGame(level: Int, abilities: CalmAbilities, onComplete: (passed:
                 last = now
                 state.step(dt)
                 tick.floatValue = state.t
+                if (state.finished && state.finishT > 1.6f) showResult.value = true
             }
         }
     }
@@ -125,7 +128,7 @@ internal fun CalmGame(level: Int, abilities: CalmAbilities, onComplete: (passed:
             tick.floatValue // Neuzeichnen pro Frame
             drawCalm(state, measurer)
         }
-        if (state.finished && state.finishT > 1.6f) {
+        if (showResult.value) {
             ResultCard(
                 passed = state.passed,
                 percent = state.percent,
