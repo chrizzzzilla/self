@@ -18,6 +18,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
@@ -67,7 +70,7 @@ private val LEVEL_NAMES = arrayOf(
  * es verglimmt, ein ruhiger Text erscheint, dann kommt es zurueck.
  */
 @Composable
-internal fun CalmGame(level: Int, abilities: CalmAbilities, onComplete: () -> Unit, onExit: () -> Unit) {
+internal fun CalmGame(level: Int, abilities: CalmAbilities, onComplete: (passed: Boolean) -> Unit, onExit: () -> Unit) {
     val state = remember(level) { CalmState(level.coerceIn(1, 10), abilities) }
     val tick = remember { mutableFloatStateOf(0f) }
     val measurer = rememberTextMeasurer()
@@ -76,17 +79,12 @@ internal fun CalmGame(level: Int, abilities: CalmAbilities, onComplete: () -> Un
 
     LaunchedEffect(level) {
         var last = 0L
-        var reported = false
         while (true) {
             withFrameNanos { now ->
                 val dt = if (last == 0L) 0f else ((now - last) / 1e9f).coerceAtMost(0.05f)
                 last = now
                 state.step(dt)
                 tick.floatValue = state.t
-            }
-            if (state.finished && state.finishT > 4.5f && !reported) {
-                reported = true
-                onComplete()
             }
         }
     }
@@ -126,6 +124,16 @@ internal fun CalmGame(level: Int, abilities: CalmAbilities, onComplete: () -> Un
         ) {
             tick.floatValue // Neuzeichnen pro Frame
             drawCalm(state, measurer)
+        }
+        if (state.finished && state.finishT > 1.6f) {
+            ResultCard(
+                passed = state.passed,
+                percent = state.percent,
+                goal = state.goalPercent,
+                station = state.level,
+                onContinue = { onComplete(state.passed) },
+                modifier = Modifier.align(Alignment.Center),
+            )
         }
         // Verlassen (ohne Fortschritt)
         Box(
@@ -173,7 +181,8 @@ private class CalmState(val level: Int, val abilities: CalmAbilities) {
     /** Zwei Haende: rechts atmen, links Gedanken (Station 1–5) bzw. Balance (6–10) */
     var breathPointer: Long? = null
     var leftPointer: Long? = null
-    val thoughtsMode: Boolean get() = level <= 5
+    /** Gedanken-Modus ist abgeschaltet – alle Stationen nutzen die Balance. */
+    val thoughtsMode: Boolean get() = false
     val thoughts = ArrayList<Thought>()
     private var nextThought = 4f
     private var grabbed: Thought? = null
@@ -206,6 +215,11 @@ private class CalmState(val level: Int, val abilities: CalmAbilities) {
     var finishT = 0f
     var bloom = 0f
     var shown = 0.45f // sanft nachgefuehrte Energie fuer die Anzeige
+    private var scoreAcc = 0f
+    /** Ruhe der Runde in Prozent (Licht 70 % + Balance 30 %) */
+    val percent: Int get() = (scoreAcc / ROUND_SECONDS * 100f).toInt().coerceIn(0, 100)
+    val goalPercent: Int get() = (55f + d * 10f).toInt()
+    val passed: Boolean get() = percent >= goalPercent
     /** dein Atem als Kurve 0..1 (steigt beim Halten, sinkt beim Loslassen) */
     var userBreath = 0f
     /** Verlauf der letzten Sekunden: Ideal + du (fuer die Atem-Linie) */
@@ -415,8 +429,8 @@ private class CalmState(val level: Int, val abilities: CalmAbilities) {
         // Balance (Station 6–10): Wellen kippen die Welt, die linke Hand steuert sanft dagegen
         if (!thoughtsMode) {
             control += ((if (leftPointer != null) (leftX - leftStartX) * 60f else 0f) - control) * min(1f, dt * 4f)
-            val rough = ((level - 6) / 4f).coerceIn(0f, 1f)
-            val disturb = (sin(t * 0.33f) * 0.7f + sin(t * 0.81f + 2f) * 0.3f) * (4f + 6f * rough) + pushVel * 40f
+            val rough = d // 0 (See) … 1 (Sturm)
+            val disturb = (sin(t * 0.33f) * 0.7f + sin(t * 0.81f + 2f) * 0.3f) * (2.5f + 8f * rough) + pushVel * 40f
             tiltVel += (disturb - tilt * 0.8f + control) * dt * 1.5f
             tiltVel *= (1f - min(1f, dt * 1.3f))
             tilt = (tilt + tiltVel * dt).coerceIn(-25f, 25f)
@@ -463,6 +477,7 @@ private class CalmState(val level: Int, val abilities: CalmAbilities) {
             }
         }
 
+        scoreAcc += dt * ((if (out) 0f else energy) * 0.7f + levelGood * 0.3f)
         if (t >= ROUND_SECONDS) {
             finished = true
             finishT = 0f
@@ -479,11 +494,16 @@ private fun DrawScope.drawCalm(s: CalmState, measurer: androidx.compose.ui.text.
     val h = size.height
     val progress = (s.t / ROUND_SECONDS).coerceIn(0f, 1f)
 
-    when (s.level) {
-        1 -> drawLake(s.t, progress, evening = false)
-        2 -> drawLake(s.t, progress, evening = true)
-        3, 4, 5 -> drawBeach(s.t, progress, s)
-        else -> drawBoat(s.t, progress, s, storm = s.level >= 9)
+    if (s.level <= 5) {
+        withTransform({ rotate(s.tilt, pivot = Offset(w / 2f, h * 0.55f)); scale(1.12f, 1.12f, pivot = Offset(w / 2f, h * 0.55f)) }) {
+            when (s.level) {
+                1 -> drawLake(s.t, progress, evening = false)
+                2 -> drawLake(s.t, progress, evening = true)
+                else -> drawBeach(s.t, progress, s)
+            }
+        }
+    } else {
+        drawBoat(s.t, progress, s, storm = s.level >= 9)
     }
 
     // Licht + Atemring
@@ -565,13 +585,8 @@ private fun DrawScope.drawCalm(s: CalmState, measurer: androidx.compose.ui.text.
         }
         at("Rechts: Finger auflegen,", w * 0.75f, h * 0.56f)
         at("wenn der Ring wächst.", w * 0.75f, h * 0.56f + 24.dp.toPx())
-        if (s.level == 1) {
-            at("Links: Gedanken langsam", w * 0.25f, h * 0.56f)
-            at("aus dem Bild schieben.", w * 0.25f, h * 0.56f + 24.dp.toPx())
-        } else {
-            at("Links: sanft gegen", w * 0.25f, h * 0.56f)
-            at("die Neigung ziehen.", w * 0.25f, h * 0.56f + 24.dp.toPx())
-        }
+        at("Links: sanft gegen", w * 0.25f, h * 0.56f)
+        at("die Neigung ziehen.", w * 0.25f, h * 0.56f + 24.dp.toPx())
     }
     // Licht aus → ruhige Saetze
     if (s.out) {
@@ -580,9 +595,7 @@ private fun DrawScope.drawCalm(s: CalmState, measurer: androidx.compose.ui.text.
         centered("Halte kurz inne.", h * 0.64f, a1, style)
         centered("Atme tief ein.", h * 0.64f, a2, style)
     }
-    if (s.finished) {
-        centered("Schön ruhig geblieben.", h * 0.66f, smoothIn(s.finishT, 0.8f, 2f), style)
-    }
+
 }
 
 /**
@@ -864,3 +877,56 @@ private fun DrawScope.ridge(color: Color, baseY: Float, amp: Float, freq: Float,
     drawPath(path, color)
 }
 
+
+/** Abschluss einer Runde: Ruhe in Prozent, Ziel, geschafft oder nicht – dann „Weiter“. */
+@Composable
+private fun ResultCard(passed: Boolean, percent: Int, goal: Int, station: Int, onContinue: () -> Unit, modifier: Modifier = Modifier) {
+    val a = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(Unit) {
+        a.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = androidx.compose.animation.core.Spring.StiffnessLow))
+    }
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(30.dp)
+    val accent = if (passed) AmbientColors.ArtyText else AmbientColors.Gold
+    androidx.compose.foundation.layout.Column(
+        modifier
+            .graphicsLayer { alpha = a.value.coerceIn(0f, 1f); scaleX = 0.85f + 0.15f * a.value; scaleY = 0.85f + 0.15f * a.value }
+            .clip(shape)
+            .background(Color(0xF0101116))
+            .border(1.dp, accent.copy(alpha = 0.8f), shape)
+            .padding(horizontal = 44.dp, vertical = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        androidx.compose.material3.Text(
+            if (passed) "GESCHAFFT" else "NOCH NICHT GANZ",
+            style = TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Medium, fontSize = 13.sp, letterSpacing = 6.sp, color = accent),
+        )
+        androidx.compose.foundation.layout.Spacer(Modifier.size(14.dp))
+        androidx.compose.material3.Text(
+            "$percent %",
+            style = TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Light, fontSize = 54.sp, color = AmbientColors.Light),
+        )
+        androidx.compose.material3.Text(
+            "Ruhe · Ziel $goal %",
+            style = TextStyle(fontFamily = Manrope, fontSize = 13.sp, letterSpacing = 1.sp, color = AmbientColors.Muted),
+        )
+        androidx.compose.foundation.layout.Spacer(Modifier.size(12.dp))
+        androidx.compose.material3.Text(
+            if (passed) "+$station Punkte · weiter zur nächsten Station" else "Diese Station kommt beim nächsten Mal noch einmal.",
+            style = TextStyle(fontFamily = Manrope, fontSize = 13.sp, color = AmbientColors.Light),
+        )
+        androidx.compose.foundation.layout.Spacer(Modifier.size(22.dp))
+        Box(
+            Modifier
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
+                .background(Color(0xFF1E2A55))
+                .border(1.dp, AmbientColors.Arty, androidx.compose.foundation.shape.RoundedCornerShape(50))
+                .clickable(onClick = onContinue)
+                .padding(horizontal = 28.dp, vertical = 12.dp),
+        ) {
+            androidx.compose.material3.Text(
+                "WEITER",
+                style = TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Medium, fontSize = 12.sp, letterSpacing = 4.sp, color = AmbientColors.Light),
+            )
+        }
+    }
+}

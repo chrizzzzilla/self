@@ -18,7 +18,10 @@ private val Context.pathStore: DataStore<Preferences> by preferencesDataStore(na
 
 /** Stand eines Spiels: heutige Stationen + Level-Fortschritt. */
 internal data class CalmProgress(
+    /** heute bestandene Stationen */
     val stationsToday: Int,
+    /** heute gespielte Runden (bestanden oder nicht) – Tageslimit */
+    val attemptsToday: Int,
     val level: Int,
     /** 0..1 Fortschritt zum naechsten Level */
     val toNext: Float,
@@ -34,28 +37,38 @@ internal class PathStore(context: Context) {
     private val dateKey = stringPreferencesKey("date")
     private val calmKey = intPreferencesKey("calm_rounds")
     private val calmXpKey = intPreferencesKey("calm_xp")
+    private val calmTriesKey = intPreferencesKey("calm_tries")
 
     private fun today() = LocalDate.now().toString()
 
     val calm: Flow<CalmProgress> = store.data.map { p ->
-        val stations = if (p[dateKey] == today()) p[calmKey] ?: 0 else 0
+        val isToday = p[dateKey] == today()
+        val stations = if (isToday) p[calmKey] ?: 0 else 0
+        val tries = if (isToday) p[calmTriesKey] ?: 0 else 0
         val xp = p[calmXpKey] ?: 0
         val (level, toNext) = levelFor(xp)
-        CalmProgress(stations, level, toNext)
+        CalmProgress(stations, tries, level, toNext)
     }
 
     /** Station geschafft. Gibt (altes Level, neues Level) zurueck. */
-    suspend fun completeCalmStation(station: Int): Pair<Int, Int> {
+    suspend fun completeCalmStation(station: Int, passed: Boolean): Pair<Int, Int> {
         val before = levelFor(store.data.first()[calmXpKey] ?: 0).first
         var after = before
         store.edit { p ->
             val t = today()
-            val current = if (p[dateKey] == t) p[calmKey] ?: 0 else 0
+            val isToday = p[dateKey] == t
+            val current = if (isToday) p[calmKey] ?: 0 else 0
+            val tries = if (isToday) p[calmTriesKey] ?: 0 else 0
             p[dateKey] = t
-            p[calmKey] = (current + 1).coerceAtMost(STATIONS_PER_DAY)
-            val xp = (p[calmXpKey] ?: 0) + station.coerceIn(1, STATIONS_PER_DAY)
-            p[calmXpKey] = xp
-            after = levelFor(xp).first
+            p[calmTriesKey] = tries + 1
+            if (passed) {
+                p[calmKey] = (current + 1).coerceAtMost(STATIONS_PER_DAY)
+                val xp = (p[calmXpKey] ?: 0) + station.coerceIn(1, STATIONS_PER_DAY)
+                p[calmXpKey] = xp
+                after = levelFor(xp).first
+            } else {
+                p[calmKey] = current
+            }
         }
         return before to after
     }

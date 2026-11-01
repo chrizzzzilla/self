@@ -76,7 +76,7 @@ private enum class TrainingGame(@StringRes val label: Int, val color: Color) {
 fun GameScreen(modifier: Modifier = Modifier, onOverlayChanged: (Boolean) -> Unit = {}) {
     val context = LocalContext.current
     val store = remember { PathStore(context) }
-    val calm by store.calm.collectAsStateWithLifecycle(initialValue = CalmProgress(0, 1, 0f))
+    val calm by store.calm.collectAsStateWithLifecycle(initialValue = CalmProgress(0, 0, 1, 0f))
     var playing by remember { mutableStateOf(false) }
     var levelUp by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
@@ -107,7 +107,9 @@ fun GameScreen(modifier: Modifier = Modifier, onOverlayChanged: (Boolean) -> Uni
                     if (g == TrainingGame.CALM) {
                         TrainingTile(
                             game = g, size = small, level = calm.level, fill = calm.toNext,
-                            done = calm.stationsToday >= PathStore.STATIONS_PER_DAY, index = i,
+                            done = calm.attemptsToday >= PathStore.STATIONS_PER_DAY ||
+                                calm.stationsToday >= PathStore.STATIONS_PER_DAY,
+                            index = i,
                             onOpen = { playing = true },
                         )
                     } else {
@@ -129,9 +131,9 @@ fun GameScreen(modifier: Modifier = Modifier, onOverlayChanged: (Boolean) -> Uni
         CalmGame(
             level = station,
             abilities = CalmAbilities(calm.level),
-            onComplete = {
+            onComplete = { passed ->
                 scope.launch {
-                    val (before, after) = store.completeCalmStation(station)
+                    val (before, after) = store.completeCalmStation(station, passed)
                     playing = false
                     if (after > before) levelUp = after
                 }
