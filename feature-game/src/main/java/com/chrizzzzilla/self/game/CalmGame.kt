@@ -30,6 +30,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.input.pointer.changedToDown
+import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -94,11 +96,31 @@ internal fun CalmGame(level: Int, abilities: CalmAbilities, onComplete: () -> Un
             Modifier
                 .fillMaxSize()
                 .pointerInput(level) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        state.press(down.position.x / size.width, down.position.y / size.height)
-                        waitForUpOrCancellation()
-                        state.release()
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            for (c in event.changes) {
+                                val nx = c.position.x / size.width
+                                val ny = c.position.y / size.height
+                                val id = c.id.value
+                                when {
+                                    c.changedToDown() -> {
+                                        if (nx >= 0.5f && state.breathPointer == null) {
+                                            state.breathPointer = id
+                                            state.press(nx, ny)
+                                        } else if (nx < 0.5f && state.leftPointer == null) {
+                                            state.leftPointer = id
+                                            state.leftDown(nx, ny)
+                                        }
+                                    }
+                                    c.changedToUp() -> {
+                                        if (id == state.breathPointer) { state.breathPointer = null; state.release() }
+                                        if (id == state.leftPointer) { state.leftPointer = null; state.leftUp() }
+                                    }
+                                    c.pressed && id == state.leftPointer -> state.leftMove(nx, ny)
+                                }
+                            }
+                        }
                     }
                 },
         ) {
@@ -128,6 +150,18 @@ internal fun CalmGame(level: Int, abilities: CalmAbilities, onComplete: () -> Un
 // Spiellogik
 // ==========================================================================================
 
+private val THOUGHTS = arrayOf(
+    "E-Mails", "Was wäre wenn …", "Muss noch …", "Termine", "Morgen", "Später", "Sorgen", "To-do", "Hab ich …?", "Nachrichten",
+)
+
+private class Thought(val text: String, var x: Float, var y: Float) {
+    var grabbed = false
+    var alpha = 0f
+    var gone = false
+    var fade = 1f
+    var slip = 0f
+}
+
 /** 8 Sekunden Verlauf bei 20 Werten pro Sekunde */
 private const val HIST = 160
 
@@ -136,6 +170,23 @@ private class Lure(var x: Float, var y: Float, var life: Float, val max: Float) 
 }
 
 private class CalmState(val level: Int, val abilities: CalmAbilities) {
+    /** Zwei Haende: rechts atmen, links Gedanken (Station 1–5) bzw. Balance (6–10) */
+    var breathPointer: Long? = null
+    var leftPointer: Long? = null
+    val thoughtsMode: Boolean get() = level <= 5
+    val thoughts = ArrayList<Thought>()
+    private var nextThought = 4f
+    private var grabbed: Thought? = null
+    private var lastLX = 0f
+    private var lastLY = 0f
+    private var lastLT = 0f
+    private var leftStartX = 0f
+    var leftX = 0f
+    /** Neigung der Welt in Grad (Boot) und Gegensteuern der linken Hand */
+    var tilt = 0f
+    private var tiltVel = 0f
+    private var control = 0f
+    var levelGood = 0f // 0..1 wie gerade man liegt (fuer die Wasserwaage)
     /** verbleibende Schilde in dieser Station */
     var shieldsLeft = abilities.shields
     var shieldFlash = 0f
@@ -203,18 +254,61 @@ private class CalmState(val level: Int, val abilities: CalmAbilities) {
         holding = true
         pressedAt = t
         // Verlockung angetippt?
-        val hit = lures.firstOrNull { abs(it.x - nx) < 0.08f && abs(it.y - ny) < 0.1f }
-        if (hit != null) {
-            hit.life = 0f
-            hit.tapped = true
-            mistake(penalty * 1.5f)
-            return
-        }
+        if (hitLure(nx, ny)) return
         // Hastig tippen, obwohl ausgeatmet werden soll
         if (!out && !inhale && !nearTransition()) mistake(penalty)
     }
 
     fun release() { holding = false }
+
+    private fun hitLure(nx: Float, ny: Float): Boolean {
+        val hit = lures.firstOrNull { abs(it.x - nx) < 0.08f && abs(it.y - ny) < 0.1f } ?: return false
+        hit.life = 0f
+        hit.tapped = true
+        mistake(penalty * 1.5f)
+        return true
+    }
+
+    fun leftDown(nx: Float, ny: Float) {
+        if (finished) return
+        if (hitLure(nx, ny)) return
+        lastLX = nx; lastLY = ny; lastLT = t
+        leftStartX = nx; leftX = nx
+        if (thoughtsMode) {
+            grabbed = thoughts.filter { !it.gone }.minByOrNull { (it.x - nx) * (it.x - nx) + (it.y - ny) * (it.y - ny) }
+                ?.takeIf { abs(it.x - nx) < 0.12f && abs(it.y - ny) < 0.1f }
+            grabbed?.grabbed = true
+        }
+    }
+
+    fun leftMove(nx: Float, ny: Float) {
+        val dt = (t - lastLT).coerceAtLeast(0.008f)
+        val speed = kotlin.math.sqrt((nx - lastLX) * (nx - lastLX) + (ny - lastLY) * (ny - lastLY)) / dt
+        if (thoughtsMode) {
+            val g = grabbed
+            if (g != null) {
+                if (speed > 1.1f) {
+                    // hastig → der Gedanke rutscht weg
+                    g.grabbed = false
+                    g.slip = 1f
+                    grabbed = null
+                } else {
+                    g.x += nx - lastLX
+                    g.y += ny - lastLY
+                }
+            }
+        } else {
+            leftX = nx
+            // hektisches Gegensteuern bringt Unruhe
+            if (speed > 1.4f) tiltVel += (if (rnd.nextBoolean()) 1f else -1f) * 6f
+        }
+        lastLX = nx; lastLY = ny; lastLT = t
+    }
+
+    fun leftUp() {
+        grabbed?.grabbed = false
+        grabbed = null
+    }
 
     private fun mistake(amount: Float) {
         // Schild: die eigene Ruhe faengt den Fehler ab
@@ -272,6 +366,65 @@ private class CalmState(val level: Int, val abilities: CalmAbilities) {
             energy = energy.coerceIn(0f, 1f)
             if (energy <= 0f) { out = true; outT = 0f }
             shown += (energy - shown) * min(1f, dt * 3f)
+        }
+
+        // Gedanken treiben auf das Licht zu (Station 1–5)
+        if (thoughtsMode && !out) {
+            if (t > nextThought) {
+                nextThought = t + 11f - level * 1.2f + rnd.nextFloat() * 4f
+                val side = rnd.nextInt(3)
+                val (sx, sy) = when (side) {
+                    0 -> -0.08f to 0.2f + rnd.nextFloat() * 0.5f
+                    1 -> 1.08f to 0.2f + rnd.nextFloat() * 0.5f
+                    else -> 0.2f + rnd.nextFloat() * 0.6f to -0.06f
+                }
+                thoughts += Thought(THOUGHTS[rnd.nextInt(THOUGHTS.size)], sx, sy)
+            }
+        }
+        val drift = 0.035f + level * 0.006f
+        val th = thoughts.iterator()
+        while (th.hasNext()) {
+            val g = th.next()
+            g.slip = (g.slip - dt * 2f).coerceAtLeast(0f)
+            if (g.gone) {
+                g.fade -= dt * 1.5f
+                if (g.fade <= 0f) th.remove()
+                continue
+            }
+            g.alpha = (g.alpha + dt * 1.2f).coerceAtMost(1f)
+            if (!g.grabbed) {
+                val dx = 0.5f + push - g.x
+                val dy = 0.42f - g.y
+                val len = kotlin.math.sqrt(dx * dx + dy * dy).coerceAtLeast(0.001f)
+                g.x += dx / len * drift * dt
+                g.y += dy / len * drift * dt
+                if (len < 0.07f) {
+                    // Gedanke erreicht das Licht
+                    g.gone = true
+                    mistake(penalty * 0.7f)
+                }
+            }
+            if (g.x < -0.12f || g.x > 1.12f || g.y < -0.1f || g.y > 1.1f) {
+                // sanft hinausgeschoben → losgelassen
+                if (g.grabbed || g.alpha >= 1f) energy = (energy + 0.03f).coerceAtMost(1f)
+                g.gone = true
+                if (g === grabbed) grabbed = null
+            }
+        }
+
+        // Balance (Station 6–10): Wellen kippen die Welt, die linke Hand steuert sanft dagegen
+        if (!thoughtsMode) {
+            control += ((if (leftPointer != null) (leftX - leftStartX) * 60f else 0f) - control) * min(1f, dt * 4f)
+            val rough = ((level - 6) / 4f).coerceIn(0f, 1f)
+            val disturb = (sin(t * 0.33f) * 0.7f + sin(t * 0.81f + 2f) * 0.3f) * (4f + 6f * rough) + pushVel * 40f
+            tiltVel += (disturb - tilt * 0.8f + control) * dt * 1.5f
+            tiltVel *= (1f - min(1f, dt * 1.3f))
+            tilt = (tilt + tiltVel * dt).coerceIn(-25f, 25f)
+            levelGood = (1f - abs(tilt) / 10f).coerceIn(0f, 1f)
+            if (!out) {
+                if (abs(tilt) < 3f) energy = (energy + dt * 0.02f).coerceAtMost(1f)
+                else if (abs(tilt) > 9f) energy -= dt * 0.05f * (abs(tilt) / 9f)
+            }
         }
 
         // Wellen / Wind schieben das Licht
@@ -390,6 +543,7 @@ private fun DrawScope.drawCalm(s: CalmState, measurer: androidx.compose.ui.text.
 
     drawBreathLine(s)
     drawGoal(s, progress)
+    if (s.thoughtsMode) drawThoughts(s, measurer) else drawSpiritLevel(s)
 
     // Texte
     val style = TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Light, fontSize = 20.sp, letterSpacing = 1.sp, color = AmbientColors.Light)
@@ -402,10 +556,22 @@ private fun DrawScope.drawCalm(s: CalmState, measurer: androidx.compose.ui.text.
     // Einstieg
     val intro = (1f - ((s.t - 5f) / 1.5f)).coerceIn(0f, 1f) * (s.t / 1f).coerceIn(0f, 1f)
     centered(LEVEL_NAMES[s.level - 1], h * 0.12f, intro, small)
-    if (s.level == 1) {
-        val hint = (1f - ((s.t - 9f) / 2f)).coerceIn(0f, 1f) * ((s.t - 1f) / 1.5f).coerceIn(0f, 1f)
-        centered("Finger auflegen, wenn der Ring wächst.", h * 0.7f, hint, style)
-        centered("Loslassen, wenn er kleiner wird.", h * 0.7f + 34.dp.toPx(), hint, style)
+    val hint = (1f - ((s.t - 10f) / 2f)).coerceIn(0f, 1f) * ((s.t - 1f) / 1.5f).coerceIn(0f, 1f)
+    if (s.level == 1 || s.level == 6) {
+        val sideStyle = style.copy(fontSize = 15.sp)
+        fun at(text: String, x: Float, y: Float) {
+            val layout = measurer.measure(text, sideStyle)
+            drawText(layout, topLeft = Offset(x - layout.size.width / 2f, y), alpha = hint)
+        }
+        at("Rechts: Finger auflegen,", w * 0.75f, h * 0.56f)
+        at("wenn der Ring wächst.", w * 0.75f, h * 0.56f + 24.dp.toPx())
+        if (s.level == 1) {
+            at("Links: Gedanken langsam", w * 0.25f, h * 0.56f)
+            at("aus dem Bild schieben.", w * 0.25f, h * 0.56f + 24.dp.toPx())
+        } else {
+            at("Links: sanft gegen", w * 0.25f, h * 0.56f)
+            at("die Neigung ziehen.", w * 0.25f, h * 0.56f + 24.dp.toPx())
+        }
     }
     // Licht aus → ruhige Saetze
     if (s.out) {
@@ -447,6 +613,49 @@ private fun DrawScope.drawBreathLine(s: CalmState) {
         drawPath(user, AmbientColors.ArtyText.copy(alpha = 0.35f * balance), style = Stroke(width = 7f * density, cap = StrokeCap.Round), blendMode = BlendMode.Plus)
     }
     drawPath(user, lerp(AmbientColors.Muted, AmbientColors.ArtyText, balance), style = Stroke(width = 2f * density, cap = StrokeCap.Round))
+}
+
+/** Gedanken-Woelkchen mit Wort; schimmern rot, wenn sie einem hastig entgleiten. */
+private fun DrawScope.drawThoughts(s: CalmState, measurer: androidx.compose.ui.text.TextMeasurer) {
+    val w = size.width
+    val h = size.height
+    val st = TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = Color(0xFF2A2E3A))
+    for (g in s.thoughts) {
+        val a = (g.alpha * g.fade).coerceIn(0f, 1f)
+        if (a <= 0.01f) continue
+        val c = Offset(g.x * w, g.y * h)
+        val layout = measurer.measure(g.text, st)
+        val rw = layout.size.width / 2f + 22.dp.toPx()
+        val rh = layout.size.height / 2f + 14.dp.toPx()
+        val base = if (g.slip > 0f) lerp(Color.White, Color(0xFFFFB0A8), g.slip) else Color.White
+        for (k in 0 until 4) {
+            val ox = (k - 1.5f) * rw * 0.45f
+            val oy = (k % 2) * -rh * 0.35f
+            drawCircle(base.copy(alpha = 0.55f * a), radius = rh * (1.05f + (k % 2) * 0.2f), center = Offset(c.x + ox, c.y + oy))
+        }
+        drawText(layout, topLeft = Offset(c.x - layout.size.width / 2f, c.y - layout.size.height / 2f), alpha = a)
+        if (g.grabbed) drawCircle(AmbientColors.ArtyText.copy(alpha = 0.5f * a), radius = rw * 1.05f, center = c, style = Stroke(1.4f * density))
+    }
+}
+
+/** Wasserwaage unten links: Bogen mit Lichtpunkt – in der Mitte = im Gleichgewicht. */
+private fun DrawScope.drawSpiritLevel(s: CalmState) {
+    val w = size.width
+    val h = size.height
+    val c = Offset(w * 0.16f, h * 0.86f)
+    val r = min(w, h) * 0.09f
+    val good = s.levelGood
+    drawArc(
+        Color.White.copy(alpha = 0.25f), startAngle = 200f, sweepAngle = 140f, useCenter = false,
+        topLeft = Offset(c.x - r, c.y - r), size = Size(r * 2f, r * 2f), style = Stroke(1.4f * density),
+    )
+    // Mitte markieren
+    drawLine(Color.White.copy(alpha = 0.4f), Offset(c.x, c.y - r - 6f * density), Offset(c.x, c.y - r + 6f * density), strokeWidth = 1.4f * density)
+    val ang = (270f + s.tilt * 3f).coerceIn(205f, 335f) * PI.toFloat() / 180f
+    val dot = Offset(c.x + cos(ang) * r, c.y + sin(ang) * r)
+    val col = lerp(Color(0xFFE08A6A), AmbientColors.ArtyText, good)
+    drawCircle(col.copy(alpha = 0.35f), radius = 12f * density, center = dot, blendMode = BlendMode.Plus)
+    drawCircle(col, radius = 5f * density, center = dot)
 }
 
 /** Ziel: ein Lichtpunkt wandert unten zum leuchtenden Ziel – man sieht, wie weit es noch ist. */
@@ -554,7 +763,7 @@ private fun DrawScope.drawBoat(t: Float, p: Float, s: CalmState, storm: Boolean)
     val w = size.width
     val h = size.height
     val rough = ((s.level - 6) / 4f).coerceIn(0f, 1f) // 0 = Station 6 … 1 = Station 10
-    val roll = sin(t * (0.5f + 0.25f * rough)) * (2.2f + 5f * rough) + sin(t * 1.2f) * (0.8f + 2f * rough)
+    val roll = (sin(t * (0.5f + 0.25f * rough)) * (2.2f + 5f * rough) + sin(t * 1.2f) * (0.8f + 2f * rough)) * 0.4f + s.tilt
     val bob = (if (storm) 0.02f else 0.01f) * h * sin(t * (if (storm) 1.1f else 0.8f))
     val horizon = h * 0.46f + bob
 
