@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -79,7 +80,7 @@ private val gHead = TextStyle(fontFamily = Manrope, fontWeight = FontWeight.Medi
 
 private enum class GardenTool { CAN, HAND, SEED }
 
-private class Hidden(val thing: SmallThing, var x: Float, var y: Float, val seed: Float) {
+private class Hidden(val thing: SmallThing, var x: Float, var y: Float, val seed: Float, val seedKind: PlantKind? = null) {
     var reveal = 0f
 }
 
@@ -119,14 +120,21 @@ internal fun GardenGame(onExit: () -> Unit) {
     var toastKey by remember { mutableIntStateOf(0) }
     var book by remember { mutableStateOf(false) }
     val rnd = remember { Random(System.nanoTime()) }
+    /** 0 = Garten, 1 = Wildnis (Samen suchen) */
+    var sceneIdx by remember { mutableIntStateOf(0) }
+    val slide = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(sceneIdx) {
+        watering.value = null
+        slide.animateTo(sceneIdx.toFloat(), androidx.compose.animation.core.spring(dampingRatio = 0.9f, stiffness = 120f))
+    }
 
     fun say(msg: String) { toast = msg; toastKey++ }
 
     LaunchedEffect(Unit) {
         val d = store.load()
-        repeat(3) { hidden += spawnHidden(d, rnd) }
+        repeat(4) { hidden += spawnHidden(d, rnd) }
         data = d
-        say("Pflege deinen Garten – und schau dich langsam um.")
+        say("Nach links wischen: in der Wildnis findest du Samen.")
     }
     LaunchedEffect(toastKey) { if (toast != null) { delay(3000); toast = null } }
 
@@ -171,7 +179,7 @@ internal fun GardenGame(onExit: () -> Unit) {
                 for (hd in hidden) {
                     val dx = (finger.x - hd.x) / 0.07f
                     val dy = (finger.y - hd.y) / 0.11f
-                    val near = finger.down && dx * dx + dy * dy < 1f
+                    val near = finger.down && sceneIdx == 1 && slide.value > 0.95f && dx * dx + dy * dy < 1f
                     when {
                         near && finger.speed < 0.15f -> hd.reveal += dt * 0.75f
                         near && finger.speed > 0.7f -> { if (hd.reveal > 0.15f) scared = hd; hd.reveal -= dt * 3f }
@@ -207,16 +215,16 @@ internal fun GardenGame(onExit: () -> Unit) {
             }
             for (hd in foundNow) {
                 hidden.remove(hd)
-                val first = d.found.add(hd.thing)
-                sparkles += Sparkle(hd.x, hd.y, AmbientColors.Gold, time.floatValue, true)
-                var msg = "${hd.thing.label}. ${hd.thing.line}"
-                if (hd.thing == SmallThing.SAMEN) {
-                    val k = d.unlocked.randomOrNull(rnd) ?: PlantKind.LICHTBLUETE
-                    d.seeds[k] = (d.seeds[k] ?: 0) + 1
-                    msg += "  (+1 Samen ${k.label})"
+                val sk = hd.seedKind
+                if (sk != null) {
+                    d.seeds[sk] = (d.seeds[sk] ?: 0) + 1
+                    sparkles += Sparkle(hd.x + 1f, hd.y, sk.color, time.floatValue, true)
+                    if (d.unlocked.add(sk)) say("Neue Art entdeckt: Samen von ${sk.label}!") else say("Samen gefunden: ${sk.label}")
+                } else {
+                    val first = d.found.add(hd.thing)
+                    sparkles += Sparkle(hd.x + 1f, hd.y, AmbientColors.Gold, time.floatValue, true)
+                    say((if (first) "" else "Wieder: ") + "${hd.thing.label}. ${hd.thing.line}")
                 }
-                if (!first) msg = "Wieder: $msg"
-                say(msg)
                 nextSpawn = time.floatValue + 12f
                 version++
             }
@@ -329,6 +337,8 @@ internal fun GardenGame(onExit: () -> Unit) {
                             finger.y = down.position.y / size.height
                             var lastT = down.uptimeMillis
                             var lp = down.position
+                            val startX = down.position.x
+                            val startT = down.uptimeMillis
                             while (true) {
                                 val ev = awaitPointerEvent()
                                 val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
@@ -342,13 +352,18 @@ internal fun GardenGame(onExit: () -> Unit) {
                                 finger.y = ch.position.y / size.height
                             }
                             finger.down = false
+                            val dxTot = lp.x - startX
+                            if (abs(dxTot) > size.width * 0.18f && lastT - startT < 800) {
+                                if (dxTot < 0f && sceneIdx == 0) sceneIdx = 1
+                                if (dxTot > 0f && sceneIdx == 1) sceneIdx = 0
+                            }
                         }
                     },
             ) {
-                drawGarden(time.floatValue, (d.secondsToday / GARDEN_SECONDS).coerceIn(0f, 1f), d, fig, hidden, watering.value, tool == GardenTool.CAN, sparkles)
+                drawGardenWorld(time.floatValue, (d.secondsToday / GARDEN_SECONDS).coerceIn(0f, 1f), d, fig, hidden, watering.value, tool == GardenTool.CAN, sparkles, slide.value, dayOver)
             }
             // Beete (Trefferflaechen)
-            PLOT_POS.forEachIndexed { i, (px, py) ->
+            if (sceneIdx == 0 && slide.value < 0.05f) PLOT_POS.forEachIndexed { i, (px, py) ->
                 Box(
                     Modifier
                         .offset(x = maxWidth * px - 60.dp, y = sceneH * py - 110.dp)
@@ -368,7 +383,7 @@ internal fun GardenGame(onExit: () -> Unit) {
             // Kopf: Hinweis · Sammlung · Schliessen
             Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.width(56.dp))
-                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { GardenHint(d, dayOver) }
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { SceneSwitch(sceneIdx) { sceneIdx = it } }
                 GRound(onClick = { book = true }) {
                     Canvas(Modifier.size(18.dp)) {
                         val w = size.width; val h = size.height
@@ -452,18 +467,157 @@ internal fun GardenGame(onExit: () -> Unit) {
 }
 
 private fun spawnHidden(d: GardenData, rnd: Random): Hidden {
-    val open = SmallThing.entries.filter { it !in d.found }
-    val thing = if (open.isNotEmpty() && rnd.nextFloat() < 0.8f) open.random(rnd)
-    else listOf(SmallThing.SAMEN, SmallThing.FUNKE, SmallThing.TAU).random(rnd)
-    var x = 0.5f
-    var y = 0.5f
-    for (tries in 0 until 30) {
-        x = 0.05f + rnd.nextFloat() * 0.9f
-        y = 0.22f + rnd.nextFloat() * 0.74f
-        val clear = PLOT_POS.none { (px, py) -> abs(x - px) < 0.08f && y > py - 0.24f && y < py + 0.05f }
-        if (clear) break
+    val x = 0.05f + rnd.nextFloat() * 0.9f
+    val y = 0.25f + rnd.nextFloat() * 0.7f
+    // gut die Haelfte sind Samen – meist bekannte Arten, manchmal eine neue
+    if (rnd.nextFloat() < 0.55f) {
+        val next = PlantKind.entries.firstOrNull { it !in d.unlocked }
+        val kind = if (next != null && rnd.nextFloat() < 0.2f) next else (d.unlocked.randomOrNull(rnd) ?: PlantKind.LICHTBLUETE)
+        return Hidden(SmallThing.SAMEN, x, y, rnd.nextFloat() * 10f, kind)
     }
+    val open = SmallThing.entries.filter { it !in d.found && it != SmallThing.SAMEN }
+    val thing = if (open.isNotEmpty() && rnd.nextFloat() < 0.8f) open.random(rnd)
+    else listOf(SmallThing.FUNKE, SmallThing.TAU, SmallThing.FEDER).random(rnd)
     return Hidden(thing, x, y, rnd.nextFloat() * 10f)
+}
+
+@Composable
+private fun SceneSwitch(current: Int, onSelect: (Int) -> Unit) {
+    val shape = RoundedCornerShape(50)
+    Row(
+        Modifier
+            .clip(shape)
+            .background(Color(0x66101116))
+            .border(1.dp, Color(0x22FFFFFF), shape)
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        listOf("GARTEN", "WILDNIS").forEachIndexed { i, label ->
+            Box(
+                Modifier
+                    .clip(shape)
+                    .background(if (i == current) Color(0x336888EC) else Color.Transparent)
+                    .clickable { onSelect(i) }
+                    .padding(horizontal = 16.dp, vertical = 7.dp),
+            ) {
+                Text(label, style = gHead.copy(fontSize = 10.sp, letterSpacing = 3.sp, color = if (i == current) AmbientColors.Light else AmbientColors.Muted))
+            }
+        }
+    }
+}
+
+/** Braucht dieses Beet gerade etwas? */
+private fun needsCare(p: Plot, d: GardenData): Boolean =
+    p.weed || p.blooming || (p.kind != null && !p.ok && !p.tooMuch) || (p.kind == null && d.seeds.values.any { it > 0 })
+
+/** Garten und Wildnis nebeneinander, per Wischen verschoben; dazu der Schleier (gruen = versorgt, blau = etwas zu tun). */
+private fun DrawScope.drawGardenWorld(
+    t: Float, day: Float, d: GardenData, fig: FigureState, hidden: List<Hidden>,
+    watering: Int?, canSelected: Boolean, sparkles: List<Sparkle>, slide: Float, dayOver: Boolean,
+) {
+    val w = size.width
+    val h = size.height
+    if (slide < 0.999f) translate(left = -slide * w) {
+        drawGarden(t, day, d, fig, emptyList(), watering, canSelected, emptyList())
+        // Beete, die etwas brauchen, leuchten blau
+        if (!dayOver) d.plots.forEachIndexed { i, p ->
+            if (needsCare(p, d)) {
+                val (px, py) = PLOT_POS[i]
+                gGlow(Offset(px * w, py * h - h * 0.04f), h * 0.11f, AmbientColors.Arty, 0.16f + 0.08f * sin(t * 2.2f + i))
+            }
+        }
+    }
+    if (slide > 0.001f) translate(left = (1f - slide) * w) { drawWild(t, day, hidden) }
+    // Funkeln (x ≥ 1 gehoert zur Wildnis)
+    translate(left = -slide * w) {
+        for (s in sparkles) {
+            val e = t - s.t0
+            val c = Offset(s.x * w, s.y * h)
+            val big = if (s.big) 1f else 0.55f
+            gGlow(c, h * 0.12f * big * (0.4f + e), s.color, (0.5f * (1f - e / 1.6f)).coerceAtLeast(0f))
+            for (k in 0 until 12) {
+                val ang = k / 12f * 2f * PI.toFloat() + k * 0.4f
+                val dist = h * 0.1f * big * (1f - kotlin.math.exp(-3f * e))
+                drawCircle(
+                    s.color.copy(alpha = (1f - e / 1.4f).coerceIn(0f, 1f)), radius = 2.2f * density,
+                    center = Offset(c.x + cos(ang) * dist, c.y + sin(ang) * dist - e * h * 0.03f), blendMode = BlendMode.Plus,
+                )
+            }
+        }
+    }
+    // Schleier im Garten
+    val inGarden = 1f - slide
+    if (inGarden > 0.01f && !dayOver) {
+        val todo = d.plots.any { needsCare(it, d) }
+        val col = if (todo) AmbientColors.Arty else Color(0xFF7FE0A0)
+        val a = (if (todo) 0.22f + 0.08f * sin(t * 1.6f) else 0.16f) * inGarden
+        drawRect(
+            Brush.radialGradient(
+                0f to Color.Transparent, 0.55f to Color.Transparent, 1f to col.copy(alpha = a),
+                center = Offset(w / 2f, h / 2f), radius = maxOf(w, h) * 0.75f,
+            ),
+            blendMode = BlendMode.Plus,
+        )
+    }
+}
+
+/** Wildnis bei Nacht: hohes Gras, ein paar Baeume, versteckte Samen und kleine Dinge. */
+private fun DrawScope.drawWild(t: Float, day: Float, hidden: List<Hidden>) {
+    val w = size.width
+    val h = size.height
+    val horizon = h * 0.42f
+    drawRect(Brush.verticalGradient(listOf(Color(0xFF04070A), Color(0xFF0B1A1C), Color(0xFF14262A), Color(0xFF080B0C)), startY = 0f, endY = h))
+    val mx = w * (0.1f + 0.8f * day)
+    val my = horizon - sin(day * PI.toFloat()) * horizon * 0.7f
+    gGlow(Offset(mx, my), h * 0.45f, Color(0xFFC8F0E0), 0.1f)
+    gGlow(Offset(mx, my), h * 0.1f, Color(0xFFE8FFF6), 0.4f)
+    drawCircle(Color(0xFFF2FFF8), radius = h * 0.018f, center = Offset(mx, my))
+    for (k in 0 until 50) {
+        val tw = 0.5f + 0.5f * sin(t * (0.4f + gHash(k + 500)) + k)
+        drawCircle(Color.White.copy(alpha = 0.4f * tw), radius = 1f * density, center = Offset(gHash(k * 3 + 501) * w, gHash(k * 7 + 502) * horizon * 0.9f))
+    }
+    val edge = Color(0xFFA8F0C8).copy(alpha = 0.22f)
+    gRidge(horizon, h * 0.06f, 2.6f, 0.2f, Color(0xFF0F1A18), edge)
+    // Baeume (rund, weich)
+    for (k in 0 until 5) {
+        val tx = w * (0.08f + k * 0.22f + gHash(k + 600) * 0.06f)
+        val ty = h * (0.5f + gHash(k + 610) * 0.04f)
+        val r = h * (0.08f + gHash(k + 620) * 0.05f)
+        drawLine(Color(0xFF0A100E), Offset(tx, ty), Offset(tx, ty - r * 1.2f), strokeWidth = r * 0.15f)
+        drawCircle(Color(0xFF0C1412), radius = r, center = Offset(tx, ty - r * 1.6f))
+        drawArc(
+            edge.copy(alpha = 0.35f), startAngle = 200f, sweepAngle = 140f, useCenter = false,
+            topLeft = Offset(tx - r, ty - r * 2.6f), size = Size(r * 2f, r * 2f), style = Stroke(1.2f * density), blendMode = BlendMode.Plus,
+        )
+    }
+    gRidge(h * 0.56f, h * 0.02f, 3.4f, 1.3f, Color(0xFF0A110F), Color(0xFFA8F0C8).copy(alpha = 0.3f))
+    // hohes Gras, sanft im Wind
+    for (k in 0 until 140) {
+        val gx = gHash(k + 700) * w
+        val gy = h * (0.6f + gHash(k + 800) * 0.4f)
+        val len = h * (0.05f + gHash(k + 900) * 0.07f) * (0.6f + (gy / h - 0.6f) * 1.5f)
+        val bend = sin(t * 0.7f + gx / w * 4f) * len * 0.25f
+        val col = Color(0xFF16261F)
+        drawLine(col, Offset(gx, gy), Offset(gx + bend, gy - len), strokeWidth = 1.6f * density, cap = StrokeCap.Round)
+        if (k % 4 == 0) drawLine(Color(0xFFA8F0C8).copy(alpha = 0.18f), Offset(gx + bend * 0.6f, gy - len * 0.6f), Offset(gx + bend, gy - len), strokeWidth = 1f * density, blendMode = BlendMode.Plus)
+    }
+    // Versteckte Dinge: kaum sichtbar, bis man langsam darueber faehrt
+    for (hd in hidden) {
+        val c = Offset(hd.x * w, hd.y * h)
+        val col = hd.seedKind?.color ?: AmbientColors.Gold
+        val idle = 0.05f + 0.06f * (0.5f + 0.5f * sin(t * 1.3f + hd.seed))
+        val a = idle + hd.reveal * 0.9f
+        gGlow(c, h * (0.02f + hd.reveal * 0.05f), col, a * 0.7f)
+        drawCircle(Color(0xFFFFF0CC).copy(alpha = a.coerceAtMost(1f)), radius = (1.2f + hd.reveal * 2f) * density, center = c)
+        if (hd.reveal > 0.05f) {
+            drawCircle(col.copy(alpha = 0.5f * hd.reveal), radius = h * (0.03f + 0.03f * hd.reveal), center = c, style = Stroke(1f * density), blendMode = BlendMode.Plus)
+        }
+    }
+    for (k in 0 until 30) {
+        val px = ((gHash(k + 1000) + t * (0.003f + gHash(k + 1100) * 0.008f)) % 1f) * w
+        val py = (gHash(k + 1200) * 0.9f + sin(t * 0.3f + k) * 0.02f) * h
+        drawCircle(Color(0xFFE0FFF0).copy(alpha = 0.15f + 0.1f * sin(t + k)), radius = 1.2f * density, center = Offset(px, py), blendMode = BlendMode.Plus)
+    }
 }
 
 /** Was ist gerade sinnvoll? Damit man nie festhaengt. */

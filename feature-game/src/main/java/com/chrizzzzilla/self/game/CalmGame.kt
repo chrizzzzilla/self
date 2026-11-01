@@ -150,7 +150,9 @@ internal fun CalmGame(level: Int, abilities: CalmAbilities, onComplete: (passed:
 // ==========================================================================================
 
 /** Abschnitt des Atemwegs: von y0 nach y1 zwischen t0 und t1. phase: 1 ein, 0 halten, -1 aus */
-private class Seg(val t0: Float, val t1: Float, val y0: Float, val y1: Float, val phase: Int)
+private class Seg(val t0: Float, val t1: Float, val y0: Float, val y1: Float, val phase: Int) {
+    val slope: Float = if (t1 > t0) abs(y1 - y0) / (t1 - t0) else 0f
+}
 
 private class Push(val at: Float, val dir: Float) {
     var done = false
@@ -218,11 +220,20 @@ private class BreathState(val level: Int, val abilities: CalmAbilities) {
         val s = seg(at)
         if (s.t1 <= s.t0) return s.y1
         val f = ((at - s.t0) / (s.t1 - s.t0)).coerceIn(0f, 1f)
-        val e = f * f * (3f - 2f * f)
+        // fast linear, nur sanfte Ecken – so bleibt das Tempo gleichmaessig und man kann folgen
+        val e = 0.75f * f + 0.25f * (f * f * (3f - 2f * f))
         return s.y0 + (s.y1 - s.y0) * e
     }
 
     fun phase(at: Float): Int = seg(at).phase
+
+    /** Tempo des Lichts: passt sich dem aktuellen (oder naechsten) Ein-/Ausatmen an, etwas schneller zum Aufholen */
+    private fun rate(ph: Int): Float {
+        val cur = seg(t)
+        val s = if (cur.phase == ph) cur else segs.firstOrNull { it.t0 >= t && it.phase == ph } ?: cur
+        return (s.slope * 1.25f).coerceIn(0.07f, 0.3f)
+    }
+    private var prevY = 0.25f
 
     val percent: Int get() = (scoreAcc / (ROUND_SECONDS - LEAD_IN) * 100f).toInt().coerceIn(0, 100)
     val goalPercent: Int get() = (55f + d * 10f).toInt()
@@ -241,8 +252,8 @@ private class BreathState(val level: Int, val abilities: CalmAbilities) {
         val up = right.isNotEmpty()
         val down = left.isNotEmpty()
         val want = when {
-            up && !down -> 0.14f
-            down && !up -> -0.12f
+            up && !down -> rate(1)
+            down && !up -> -rate(-1)
             else -> 0f
         }
         v += (want - v) * min(1f, dt * 6f)
@@ -260,12 +271,15 @@ private class BreathState(val level: Int, val abilities: CalmAbilities) {
         close += (c - close) * min(1f, dt * 3f)
         if (t > LEAD_IN) scoreAcc += dt * c
 
+        // Spur gleichmaessig nachzeichnen (zwischen den Frames interpolieren, sonst „huepft“ sie)
         trailAcc += dt
-        while (trailAcc >= 1f / 60f) {
-            trailAcc -= 1f / 60f
+        val m = (trailAcc * 60f).toInt()
+        for (k in 0 until m) {
             trailHead = (trailHead + 1) % trail.size
-            trail[trailHead] = y
+            trail[trailHead] = prevY + (y - prevY) * (k + 1) / m
         }
+        trailAcc -= m / 60f
+        if (m > 0) prevY = y
         if (t >= ROUND_SECONDS) { finished = true; finishT = 0f }
     }
 }
