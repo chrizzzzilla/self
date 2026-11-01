@@ -1,5 +1,12 @@
 # Self — Session-Memory (neueste oben)
 
+## 2026-11-01 — Session 1e: Soul/Path, Quellen, Ambiente-Panel (bis 0.1.15) [Rechner: Office]
+- Menü: Raster-Knopf unten links → Soul (Lesen) / Path (Spiel), animierte Glyphen. Arty = aufgehende Sonne unten.
+- Buch-Quellen im eingebauten Browser (StoreBrowser.kt, INTERNET): Tolino-Webreader, Beam, Libreture, Gutenberg, Standard Ebooks, J-Novel Club, Humble; EPUB-Download wird direkt importiert.
+- Path: nur Bildschirmaufbau (Welt + Ruhe/Ehrgeiz/Wertschätzung, Tageslimit 10/10/10 + 30 Min). Spielideen + Lesezeit→oberes Spiel noch zu klären.
+- Ambiente-Panel Vollbild (AmbientPanel.kt): Visualizer, Presets, Kacheln + senkrechte Lautstärke, Bilder CITY/MOUNTAIN/FOREST/FIELD mit Jahreszeit, Tageszeit, Echtzeit (Sky.kt/Landscapes.kt).
+- Offen: Feedback zu den Szenen; evtl. echte CC0-Naturaufnahmen statt Synthese; CBZ für Manga; Foreground-Service.
+
 ## 2026-11-01 — Session 1d: Entspannungs-Look (0.1.8) [Rechner: Office]
 - Leitbild (Chris): wirklich entspannende App, Stil wie `Desktop/Pitch-Motion.html` (fast schwarz, warmes Licht,
   Partikel-Sprites mit Plus-Blending, Staub mit Tiefe, Lichtfäden Weiß/Gold, Arty-Blau #6888EC, Manrope) – nicht comichaft.
