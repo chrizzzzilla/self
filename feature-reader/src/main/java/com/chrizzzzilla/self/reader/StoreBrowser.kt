@@ -201,6 +201,11 @@ internal fun StoreBrowser(
                             }.getOrNull() ?: return
                             main.post { onDownload(StoreDownload("blob:", settings.userAgentString, null, mime, file, name)) }
                         }
+
+                        @JavascriptInterface
+                        fun onTooBig() {
+                            main.post { notice = "Diese Datei ist zu groß, um sie aus dem Webreader zu übernehmen." }
+                        }
                     }, "SelfBridge")
                     setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
                         when {
@@ -277,6 +282,7 @@ private fun blobFetchJs(url: String, mime: String?, name: String?): String {
     return """
         (function(){
           fetch(${q(url)}).then(function(r){ return r.blob(); }).then(function(b){
+            if (b.size > 60 * 1024 * 1024) { SelfBridge.onTooBig(); return; }
             var fr = new FileReader();
             fr.onloadend = function(){
               var s = String(fr.result); var i = s.indexOf(',');
