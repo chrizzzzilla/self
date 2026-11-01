@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -69,6 +70,9 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.exp
+import kotlin.math.sign
+import kotlin.math.sqrt
 import kotlin.math.min
 import kotlin.math.sin
 
@@ -97,6 +101,11 @@ internal fun WorkshopGame(onExit: () -> Unit) {
     var toastKey by remember { mutableIntStateOf(0) }
     var book by remember { mutableStateOf(false) }
     val time = remember { mutableFloatStateOf(0f) }
+    val fig = remember { FigureState() }
+    val target = remember { mutableStateOf<Node?>(null) }
+    val flyers = remember { mutableStateListOf<Flyer>() }
+    val craftFx = remember { mutableStateOf<Pair<Item, Float>?>(null) }
+    val pulse = remember { mutableFloatStateOf(0f) }
 
     fun say(msg: String) { toast = msg; toastKey++ }
 
@@ -117,6 +126,7 @@ internal fun WorkshopGame(onExit: () -> Unit) {
         val d = data ?: return@LaunchedEffect
         var last = 0L
         var sinceSave = 0f
+        var arrived: Node? = null
         while (true) {
             withFrameNanos { now ->
                 val dt = if (last == 0L) 0f else ((now - last) / 1e9f).coerceAtMost(0.1f)
@@ -131,8 +141,51 @@ internal fun WorkshopGame(onExit: () -> Unit) {
                 if (holding.value && r != null && r.work == Work.HOLD && kraft.floatValue > 0.02f) {
                     progress.floatValue += dt
                     kraft.floatValue -= dt * 0.03f
+                    fig.work = 0.3f
                 }
                 sinceSave += dt
+                // Spielfigur
+                fig.moving = false
+                target.value?.let { n ->
+                    val tx = n.x
+                    val ty = (n.y + 0.16f).coerceAtMost(0.95f)
+                    val dx = tx - fig.x
+                    val dy = ty - fig.y
+                    val dist = sqrt(dx * dx + dy * dy)
+                    val step = 0.42f * dt
+                    if (dist <= step) {
+                        fig.x = tx; fig.y = ty
+                        target.value = null
+                        arrived = n
+                    } else {
+                        fig.x += dx / dist * step
+                        fig.y += dy / dist * step
+                        fig.walk += dt * 11f
+                        fig.moving = true
+                        if (abs(dx) > 0.002f) fig.facing = sign(dx)
+                    }
+                }
+                fig.work = (fig.work - dt).coerceAtLeast(0f)
+                fig.gather = (fig.gather - dt).coerceAtLeast(0f)
+                pulse.floatValue = (pulse.floatValue - dt).coerceAtLeast(0f)
+                flyers.removeAll { time.floatValue - it.t0 > 0.75f }
+                craftFx.value?.let { if (time.floatValue - it.second > 1.9f) craftFx.value = null }
+            }
+            arrived?.let { n ->
+                arrived = null
+                val left = d.nodes[n.item] ?: 0
+                when {
+                    n.item != Item.WASSER && left <= 0 -> say("${n.item.label}: für heute leer.")
+                    kraft.floatValue < 0.03f -> say("Kurz verschnaufen …")
+                    else -> {
+                        if (n.item != Item.WASSER) d.nodes[n.item] = left - 1
+                        d.inventory[n.item] = (d.inventory[n.item] ?: 0) + 1
+                        kraft.floatValue -= 0.03f
+                        fig.gather = 0.4f
+                        flyers += Flyer(n.item, n.x, n.y, time.floatValue)
+                        version++
+                    }
+                }
             }
             if (sinceSave > 5f) {
                 sinceSave = 0f
@@ -140,7 +193,9 @@ internal fun WorkshopGame(onExit: () -> Unit) {
             }
             val r = match(tray, d)
             if (r != null && progress.floatValue >= r.amount) {
-                craft(d, r, tray)?.let { say(it) }
+                craft(d, r, tray).let { say(it) }
+                craftFx.value = r.output to time.floatValue
+                fig.work = 0f
                 progress.floatValue = 0f
                 version++
                 store.save(d)
@@ -163,7 +218,7 @@ internal fun WorkshopGame(onExit: () -> Unit) {
             val sceneH = maxHeight * 0.66f
             // Landschaft + Sonne + gebaute Einrichtungen
             Canvas(Modifier.fillMaxWidth().height(sceneH)) {
-                drawLandscape(time.floatValue, (d.secondsToday / DAILY_SECONDS).coerceIn(0f, 1f), d)
+                drawLandscape(time.floatValue, (d.secondsToday / DAILY_SECONDS).coerceIn(0f, 1f), d, fig)
             }
             // Sammelstellen
             for (n in NODES) {
@@ -178,13 +233,7 @@ internal fun WorkshopGame(onExit: () -> Unit) {
                         dayOver -> say("Feierabend – morgen geht es weiter.")
                         locked -> say("Dafür brauchst du: ${n.needs!!.label}")
                         left <= 0 -> say("${n.item.label}: für heute leer.")
-                        kraft.floatValue < 0.03f -> say("Kurz verschnaufen …")
-                        else -> {
-                            if (n.item != Item.WASSER) d.nodes[n.item] = left - 1
-                            d.inventory[n.item] = (d.inventory[n.item] ?: 0) + 1
-                            kraft.floatValue -= 0.03f
-                            version++
-                        }
+                        else -> target.value = n
                     }
                 }
             }
@@ -194,8 +243,10 @@ internal fun WorkshopGame(onExit: () -> Unit) {
                 Modifier.fillMaxWidth().padding(20.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                KraftMeter(kraft.floatValue)
-                Spacer(Modifier.weight(1f))
+                KraftMeter(kraft)
+                Box(Modifier.weight(1f).padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
+                    GoalHint(d)
+                }
                 RoundButton(onClick = { book = true }) {
                     Canvas(Modifier.size(18.dp)) {
                         val w = size.width; val h = size.height
@@ -232,7 +283,7 @@ internal fun WorkshopGame(onExit: () -> Unit) {
                     ) {
                         Item.entries.filter { !it.isStation && (d.inventory[it] ?: 0) > 0 }.forEach { item ->
                             ItemChip(item, d.inventory[item] ?: 0) {
-                                if (tray.size < 6 && !dayOver) {
+                                if (tray.size < 8 && !dayOver) {
                                     d.inventory[item] = (d.inventory[item] ?: 0) - 1
                                     tray += item
                                     progress.floatValue = 0f
@@ -248,7 +299,7 @@ internal fun WorkshopGame(onExit: () -> Unit) {
                 Column(Modifier.weight(1.2f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("ABLAGE", style = headStyle)
                     Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         tray.toList().forEachIndexed { i, item ->
                             ItemChip(item, null, compact = true) {
                                 tray.removeAt(i)
@@ -265,20 +316,22 @@ internal fun WorkshopGame(onExit: () -> Unit) {
                         recipe != null -> WorkCircle(
                             recipe = recipe,
                             discovered = recipe.id in d.discovered,
-                            progress = progress.floatValue,
+                            progress = progress,
+                            pulse = pulse,
                             onTap = {
                                 if (recipe.work == Work.TAP) work(kraft, progress, 1f, 0.05f) { say("Kurz verschnaufen …") }
+                                fig.work = 0.45f; pulse.floatValue = 0.18f
                             },
                             onTurn = { turns ->
-                                if (recipe.work == Work.CIRCLE) work(kraft, progress, turns, 0.06f) { say("Kurz verschnaufen …") }
+                                if (recipe.work == Work.CIRCLE) { work(kraft, progress, turns, 0.06f) { say("Kurz verschnaufen …") }; fig.work = 0.3f }
                             },
                             onRub = {
-                                if (recipe.work == Work.RUB) work(kraft, progress, 1f, 0.03f) { say("Kurz verschnaufen …") }
+                                if (recipe.work == Work.RUB) { work(kraft, progress, 1f, 0.03f) { say("Kurz verschnaufen …") }; fig.work = 0.3f; pulse.floatValue = 0.1f }
                             },
                             onHold = { holding.value = it },
                         )
-                        near != null -> Text(
-                            near,
+                        near != null || partial(tray, d) != null -> Text(
+                            near ?: partial(tray, d)!!,
                             textAlign = TextAlign.Center,
                             style = labelStyle.copy(color = AmbientColors.Gold, fontSize = 12.sp, letterSpacing = 0.5.sp),
                         )
@@ -288,6 +341,11 @@ internal fun WorkshopGame(onExit: () -> Unit) {
                         )
                     }
                 }
+            }
+
+            Flyers(flyers, time, maxWidth, sceneH)
+            craftFx.value?.let { fx ->
+                CraftBurst(fx, time, Modifier.align(Alignment.TopCenter).offset(y = sceneH * 0.5f - 110.dp))
             }
 
             // Meldung
@@ -332,6 +390,23 @@ private fun match(tray: List<Item>, d: WorkshopData): Recipe? {
     }
 }
 
+/** Naechstes Rezept, das man jetzt herstellen koennte (Werkzeug/Einrichtung vorhanden). */
+private fun nextGoal(d: WorkshopData): Recipe? = RECIPES.firstOrNull { r ->
+    r.id !in d.discovered && !(r.output.isStation && r.output in d.built) &&
+        (r.tool == null || d.has(r.tool)) && (r.station == null || r.station in d.built)
+}
+
+/** Ablage ist ein Teil eines Rezepts? Dann sagen, was noch fehlt. */
+private fun partial(tray: List<Item>, d: WorkshopData): String? {
+    if (tray.isEmpty()) return null
+    val counts = tray.groupingBy { it }.eachCount()
+    val candidates = RECIPES.filter { r -> counts.all { (k, v) -> (r.inputs[k] ?: 0) >= v } && r.inputs != counts }
+    val r = candidates.firstOrNull { it == nextGoal(d) } ?: candidates.firstOrNull { it.id in d.discovered } ?: candidates.firstOrNull()
+        ?: return null
+    val missing = r.inputs.mapNotNull { (k, v) -> val m = v - (counts[k] ?: 0); if (m > 0) (if (m > 1) "${m}× " else "") + k.label else null }
+    return "Gut so – es fehlt noch: " + missing.joinToString(", ")
+}
+
 /** Passt die Ablage zu einem Rezept, fehlt aber Werkzeug/Einrichtung? Dann ein Hinweis. */
 private fun nearMatch(tray: List<Item>, d: WorkshopData): String? {
     if (tray.isEmpty()) return null
@@ -372,6 +447,89 @@ private fun craft(d: WorkshopData, r: Recipe, tray: MutableList<Item>): String {
 // ------------------------------------------------------------------------------------------
 
 @Composable
+private fun GoalHint(d: WorkshopData) {
+    val goal = nextGoal(d)
+    val shape = RoundedCornerShape(50)
+    Row(
+        Modifier
+            .clip(shape)
+            .background(Color(0x99101116))
+            .border(1.dp, AmbientColors.Gold.copy(alpha = 0.35f), shape)
+            .padding(horizontal = 16.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (goal == null) {
+            Text("Alles entdeckt · bald kommt Metall", style = labelStyle.copy(fontSize = 12.sp, letterSpacing = 0.5.sp, color = AmbientColors.Gold))
+            return@Row
+        }
+        Text("ZIEL   ", style = headStyle.copy(fontSize = 10.sp, color = AmbientColors.Gold))
+        goal.inputs.entries.forEachIndexed { i, (item, n) ->
+            if (i > 0) Text("  +  ", style = labelStyle.copy(fontSize = 12.sp))
+            val have = (d.inventory[item] ?: 0) >= n
+            ItemIcon(item, 22.dp, dim = !have)
+            Text(
+                (if (n > 1) " ${n}× " else " ") + item.label,
+                maxLines = 1,
+                style = labelStyle.copy(fontSize = 11.sp, letterSpacing = 0.sp, color = if (have) AmbientColors.Light else AmbientColors.Muted),
+            )
+        }
+        val extra = listOfNotNull(goal.tool?.let { "mit ${it.label}" }, goal.station?.let { "am ${it.label}" })
+        if (extra.isNotEmpty()) Text("   · " + extra.joinToString(" · "), maxLines = 1, style = labelStyle.copy(fontSize = 11.sp, letterSpacing = 0.sp, color = AmbientColors.Muted))
+        Text("   →  ?", style = headStyle.copy(fontSize = 12.sp, color = AmbientColors.Gold))
+    }
+}
+
+@Composable
+private fun Flyers(list: List<Flyer>, time: androidx.compose.runtime.MutableFloatState, w: Dp, sceneH: Dp) {
+    val now = time.floatValue
+    for (f in list) {
+        val e = ((now - f.t0) / 0.7f).coerceIn(0f, 1f)
+        val ease = e * e * (3f - 2f * e)
+        val x = w * f.x * (1f - ease) + 60.dp * ease
+        val y = sceneH * f.y * (1f - ease) + (sceneH + 56.dp) * ease - sceneH * (sin(e * PI.toFloat()) * 0.18f)
+        Box(
+            Modifier
+                .offset(x = x - 18.dp, y = y - 18.dp)
+                .graphicsLayer { alpha = 1f - e * 0.3f; val s = 1.25f - 0.45f * e; scaleX = s; scaleY = s },
+        ) { ItemIcon(f.item, 36.dp) }
+    }
+}
+
+/** Herstellen: Lichtblitz, Funken, das neue Teil springt gross heraus. */
+@Composable
+private fun CraftBurst(fx: Pair<Item, Float>, time: androidx.compose.runtime.MutableFloatState, modifier: Modifier) {
+    val e = time.floatValue - fx.second
+    if (e < 0f || e > 1.9f) return
+    val grow = (e / 0.18f).coerceIn(0f, 1f)
+    val scale = grow * (1f + 0.3f * exp(-4f * e) * sin(e * 14f))
+    val fade = if (e > 1.35f) (1f - (e - 1.35f) / 0.55f).coerceIn(0f, 1f) else 1f
+    Box(modifier.size(220.dp).graphicsLayer { alpha = fade }, contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val c = center
+            val big = size.minDimension / 2f
+            val gr = big * min(1f, 0.3f + e * 2f)
+            drawCircle(
+                Brush.radialGradient(listOf(AmbientColors.Gold.copy(alpha = 0.5f), Color.Transparent), center = c, radius = gr),
+                radius = gr, center = c, blendMode = BlendMode.Plus,
+            )
+            if (e < 1f) drawCircle(AmbientColors.Gold.copy(alpha = (1f - e) * 0.7f), radius = big * (0.25f + e * 0.7f), center = c, style = Stroke(2f * density))
+            for (k in 0 until 18) {
+                val ang = k / 18f * 2f * PI.toFloat() + k * 0.37f
+                val dist = big * (0.2f + 0.8f * (1f - exp(-3f * e))) * (0.7f + (k % 3) * 0.15f)
+                val a = (1f - e / 1.4f).coerceIn(0f, 1f)
+                drawCircle(
+                    lerp(AmbientColors.Gold, Color(0xFFFFF0CC), (k % 2).toFloat()).copy(alpha = a),
+                    radius = 3f * density * (1f - e / 2f),
+                    center = Offset(c.x + cos(ang) * dist, c.y + sin(ang) * dist),
+                    blendMode = BlendMode.Plus,
+                )
+            }
+        }
+        Box(Modifier.graphicsLayer { scaleX = scale; scaleY = scale }) { ItemIcon(fx.first, 84.dp) }
+    }
+}
+
+@Composable
 private fun RoundButton(onClick: () -> Unit, content: @Composable () -> Unit) {
     Box(
         Modifier
@@ -385,9 +543,10 @@ private fun RoundButton(onClick: () -> Unit, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun KraftMeter(value: Float) {
+private fun KraftMeter(state: androidx.compose.runtime.MutableFloatState) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Canvas(Modifier.size(40.dp)) {
+            val value = state.floatValue
             drawCircle(Color(0x33FFFFFF), style = Stroke(4f * density))
             drawArc(
                 lerp(Color(0xFFE08A6A), AmbientColors.Gold, value), startAngle = -90f, sweepAngle = 360f * value.coerceIn(0f, 1f),
@@ -444,7 +603,8 @@ private fun ItemChip(item: Item, count: Int?, compact: Boolean = false, onClick:
 private fun WorkCircle(
     recipe: Recipe,
     discovered: Boolean,
-    progress: Float,
+    progress: androidx.compose.runtime.MutableFloatState,
+    pulse: androidx.compose.runtime.MutableFloatState,
     onTap: () -> Unit,
     onTurn: (Float) -> Unit,
     onRub: () -> Unit,
@@ -454,6 +614,7 @@ private fun WorkCircle(
         Box(
             Modifier
                 .size(112.dp)
+                .graphicsLayer { val p = 1f + pulse.floatValue * 0.5f; scaleX = p; scaleY = p }
                 .pointerInput(recipe.id) {
                     awaitEachGesture {
                         val down = awaitFirstDown()
@@ -498,7 +659,7 @@ private fun WorkCircle(
                 val r = size.minDimension / 2f - 6f * density
                 drawCircle(Color(0x22FFFFFF), radius = r)
                 drawCircle(AmbientColors.Light.copy(alpha = 0.25f), radius = r, style = Stroke(1.2f * density))
-                val frac = (progress / recipe.amount).coerceIn(0f, 1f)
+                val frac = (progress.floatValue / recipe.amount).coerceIn(0f, 1f)
                 drawArc(
                     AmbientColors.Gold, startAngle = -90f, sweepAngle = 360f * frac, useCenter = false,
                     topLeft = Offset(size.width / 2f - r, size.height / 2f - r), size = Size(r * 2f, r * 2f),
@@ -627,7 +788,7 @@ private fun DrawScope.drawItem(item: Item, alpha: Float) {
 }
 
 /** Landschaft: Himmel nach Tageszeit (Morgen → Abend ueber die 10 Minuten), Sonne, Wald, Felsen, Fluss. */
-private fun DrawScope.drawLandscape(t: Float, day: Float, d: WorkshopData) {
+private fun DrawScope.drawLandscape(t: Float, day: Float, d: WorkshopData, fig: FigureState) {
     val w = size.width
     val h = size.height
     val evening = smoothstep(0.7f, 1f, day)
@@ -681,8 +842,79 @@ private fun DrawScope.drawLandscape(t: Float, day: Float, d: WorkshopData) {
         drawLine(Color(0xFF6A4A30), Offset(bx + w * 0.01f, by), Offset(bx + w * 0.01f, by + h * 0.08f), strokeWidth = w * 0.006f)
         drawLine(Color(0xFF6A4A30), Offset(bx + w * 0.09f, by), Offset(bx + w * 0.09f, by + h * 0.08f), strokeWidth = w * 0.006f)
     }
+    drawFigure(fig, t, evening)
     // Daemmerung am Abend
     if (evening > 0f) drawRect(Color(0xFF0A0A20).copy(alpha = 0.25f * evening))
+}
+
+internal class FigureState {
+    var x = 0.5f
+    var y = 0.86f
+    var walk = 0f
+    var facing = 1f
+    var moving = false
+    var work = 0f
+    var gather = 0f
+}
+
+internal class Flyer(val item: Item, val x: Float, val y: Float, val t0: Float)
+
+/** Kleine Spielfigur im Umhang: laeuft, bueckt sich zum Sammeln, arbeitet mit dem Arm. */
+private fun DrawScope.drawFigure(f: FigureState, t: Float, evening: Float) {
+    val x = f.x * size.width
+    val y = f.y * size.height
+    val s = size.height * (0.10f + 0.06f * f.y)
+    val sw = if (f.moving) sin(f.walk) else 0f
+    val bob = if (f.moving) abs(cos(f.walk)) * s * 0.035f else sin(t * 1.6f) * s * 0.008f
+    val bend = if (f.gather > 0f) sin(f.gather / 0.4f * PI.toFloat()) * s * 0.12f else 0f
+    // Schatten
+    drawOval(Color.Black.copy(alpha = 0.28f), topLeft = Offset(x - s * 0.22f, y - s * 0.04f), size = Size(s * 0.44f, s * 0.08f))
+    val hip = Offset(x, y - s * 0.45f - bob + bend * 0.3f)
+    val legC = lerp(Color(0xFF3A3A48), Color(0xFF1E1E28), evening)
+    drawLine(legC, hip, Offset(x + sw * s * 0.17f, y), strokeWidth = s * 0.075f, cap = StrokeCap.Round)
+    drawLine(legC, hip, Offset(x - sw * s * 0.17f, y), strokeWidth = s * 0.075f, cap = StrokeCap.Round)
+    val sh = Offset(x + f.facing * bend * 0.6f, y - s * 0.82f - bob + bend)
+    val cloakC = lerp(Color(0xFF6888EC), Color(0xFF34406A), evening)
+    val cloak = Path().apply {
+        moveTo(sh.x - s * 0.11f, sh.y)
+        lineTo(sh.x + s * 0.11f, sh.y)
+        lineTo(hip.x + s * 0.19f - f.facing * sw * s * 0.03f, hip.y + s * 0.1f)
+        lineTo(hip.x - s * 0.19f - f.facing * sw * s * 0.03f, hip.y + s * 0.1f)
+        close()
+    }
+    drawPath(cloak, cloakC)
+    // Arm: 0 = haengt, PI/2 = nach vorn, PI = nach oben
+    val a = when {
+        f.work > 0f -> 0.9f + abs(sin(f.work * 16f)) * 1.7f
+        f.gather > 0f -> 0.7f
+        f.moving -> 0.15f + sw * 0.45f
+        else -> 0.12f
+    }
+    val armLen = s * (if (f.gather > 0f) 0.42f else 0.34f)
+    val hand = Offset(sh.x + sin(a) * f.facing * armLen, sh.y + s * 0.04f + cos(a) * armLen)
+    drawLine(lerp(cloakC, Color.Black, 0.25f), Offset(sh.x, sh.y + s * 0.04f), hand, strokeWidth = s * 0.07f, cap = StrokeCap.Round)
+    if (f.work > 0f) {
+        // Werkzeug in der Hand
+        val dir = Offset(sin(a + 1.4f) * f.facing, cos(a + 1.4f))
+        drawLine(Color(0xFF8A6A48), hand, hand + dir * (s * 0.22f), strokeWidth = s * 0.04f, cap = StrokeCap.Round)
+        drawCircle(Color(0xFF9A9A98), radius = s * 0.06f, center = hand + dir * (s * 0.22f))
+    }
+    drawCircle(Color(0xFFEADBC4), radius = s * 0.045f, center = hand)
+    // Kopf mit Kapuze
+    val head = Offset(sh.x + f.facing * s * 0.01f, sh.y - s * 0.13f)
+    drawCircle(Color(0xFFEADBC4), radius = s * 0.1f, center = head)
+    drawArc(
+        lerp(cloakC, Color.Black, 0.15f), startAngle = 160f, sweepAngle = 220f, useCenter = true,
+        topLeft = Offset(head.x - s * 0.125f, head.y - s * 0.13f), size = Size(s * 0.25f, s * 0.25f),
+    )
+    // Abends: kleines Licht
+    if (evening > 0.2f) {
+        val lc = Offset(hip.x + f.facing * s * 0.22f, hip.y)
+        drawCircle(
+            Brush.radialGradient(listOf(Color(0xFFFFC870).copy(alpha = 0.5f * evening), Color.Transparent), center = lc, radius = s * 0.5f),
+            radius = s * 0.5f, center = lc, blendMode = BlendMode.Plus,
+        )
+    }
 }
 
 private fun smoothstep(a: Float, b: Float, x: Float): Float {

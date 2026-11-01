@@ -54,10 +54,10 @@ internal enum class Item(val label: String, val tier: Int, val color: Color) {
 
 /** Art der Arbeit am Arbeitskreis (eine Hand). */
 internal enum class Work(val hint: String) {
-    TAP("klopfen"),
-    CIRCLE("im Kreis drehen"),
-    RUB("hin und her reiben"),
-    HOLD("halten"),
+    TAP("mehrmals auf den Kreis tippen"),
+    CIRCLE("Finger im Kreis ziehen"),
+    RUB("Finger hin und her wischen"),
+    HOLD("Finger auf dem Kreis halten"),
 }
 
 internal class Recipe(
@@ -159,6 +159,8 @@ internal class WorkshopData(
         }
         // Damit der Einstieg moeglich ist: ohne Faustkeil gibt es mindestens einen Feuerstein
         if (!has(Item.FAUSTKEIL)) nodes[Item.FEUERSTEIN] = maxOf(1, nodes[Item.FEUERSTEIN] ?: 0)
+        // Harz wird fuer Pech/Werkbank gebraucht – solange die fehlt, mindestens eins
+        if (Item.WERKBANK !in built) nodes[Item.HARZ] = maxOf(1, nodes[Item.HARZ] ?: 0)
     }
 }
 
