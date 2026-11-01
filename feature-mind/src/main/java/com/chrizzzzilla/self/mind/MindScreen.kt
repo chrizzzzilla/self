@@ -178,6 +178,8 @@ private fun QuestionFlow(questions: List<String>, modifier: Modifier, onCancel: 
     var index by remember { mutableIntStateOf(0) }
     val answers = remember { mutableStateListOf("", "", "") }
     val focus = remember { FocusRequester() }
+    var hint by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(hint) { if (hint != null) { kotlinx.coroutines.delay(3500); hint = null } }
     LaunchedEffect(index) { runCatching { focus.requestFocus() } }
     val shape = RoundedCornerShape(30.dp)
     Column(
@@ -199,6 +201,7 @@ private fun QuestionFlow(questions: List<String>, modifier: Modifier, onCancel: 
         Spacer(Modifier.height(16.dp))
         Text(questions[index], style = mText.copy(fontSize = 22.sp, lineHeight = 30.sp))
         Spacer(Modifier.height(18.dp))
+        Box(Modifier.fillMaxWidth()) {
         BasicTextField(
             value = answers[index],
             onValueChange = { answers[index] = it },
@@ -209,13 +212,21 @@ private fun QuestionFlow(questions: List<String>, modifier: Modifier, onCancel: 
                 .heightIn(min = 120.dp, max = 260.dp)
                 .clip(RoundedCornerShape(18.dp))
                 .background(Color(0x14FFFFFF))
-                .padding(16.dp)
+                .padding(start = 16.dp, top = 16.dp, end = 64.dp, bottom = 16.dp)
                 .focusRequester(focus),
             decorationBox = { inner ->
-                if (answers[index].isEmpty()) Text("Schreib einfach, was dir einfällt …", style = mText.copy(fontSize = 15.sp, color = AmbientColors.Muted))
+                if (answers[index].isEmpty()) Text("Schreib oder erzähl einfach (Mikrofon) …", style = mText.copy(fontSize = 15.sp, color = AmbientColors.Muted))
                 inner()
             },
         )
+        DictationButton(
+            current = { answers[index] },
+            onText = { answers[index] = it },
+            onMessage = { hint = it },
+            modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp),
+        )
+        }
+        hint?.let { Text(it, style = mText.copy(fontSize = 12.sp, color = AmbientColors.Gold), modifier = Modifier.padding(top = 8.dp)) }
         Spacer(Modifier.height(20.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             for (k in 0 until 3) {

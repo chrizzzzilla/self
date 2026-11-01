@@ -1,2 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Nur zum Erzaehlen in Mind (Sprache → Text). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Ab Android 11 noetig, damit die App den Spracherkennungsdienst sieht. -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+</manifest>
