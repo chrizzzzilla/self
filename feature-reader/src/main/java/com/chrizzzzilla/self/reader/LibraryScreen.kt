@@ -219,30 +219,33 @@ fun LibraryScreen(
             )
         }
 
-        // Eingebauter Browser: Download eines EPUBs → direkt in die Bibliothek und öffnen
+        // Eingebauter Browser: Download eines EPUBs → direkt in die Bibliothek und öffnen.
+        // Tolino laeuft ueber die Chromium-WebView (Gecko bricht dort mit „DB ACTION TIMED OUT“ ab),
+        // alle anderen Quellen bleiben bei GeckoView.
         store?.let { src ->
-            StoreBrowser(
-                source = src,
-                onClose = { store = null },
-                onDownload = { d ->
-                    when {
-                        d.isAdobeDrm -> scope.launch { snackbar.showSnackbar(context.getString(R.string.reader_error_adobe_drm)) }
-                        !d.isBook && d.localFile == null && d.mimeType?.contains("octet-stream") != true ->
-                            scope.launch { snackbar.showSnackbar(context.getString(R.string.reader_error_not_epub_download)) }
-                        else -> {
-                            store = null
-                            runTask {
-                                val file = downloadToCache(context, d)
-                                try {
-                                    Reader.importAndOpen(context, Uri.fromFile(file))
-                                } finally {
-                                    file.delete()
-                                }
+            val onDl: (StoreDownload) -> Unit = { d ->
+                when {
+                    d.isAdobeDrm -> scope.launch { snackbar.showSnackbar(context.getString(R.string.reader_error_adobe_drm)) }
+                    !d.isBook && d.localFile == null && d.mimeType?.contains("octet-stream") != true ->
+                        scope.launch { snackbar.showSnackbar(context.getString(R.string.reader_error_not_epub_download)) }
+                    else -> {
+                        store = null
+                        runTask {
+                            val file = downloadToCache(context, d)
+                            try {
+                                Reader.importAndOpen(context, Uri.fromFile(file))
+                            } finally {
+                                file.delete()
                             }
                         }
                     }
-                },
-            )
+                }
+            }
+            if (src == BookSource.TOLINO) {
+                StoreBrowserWeb(source = src, onClose = { store = null }, onDownload = onDl)
+            } else {
+                StoreBrowser(source = src, onClose = { store = null }, onDownload = onDl)
+            }
         }
     }
 
