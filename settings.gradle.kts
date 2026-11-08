@@ -17,10 +17,6 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        // GeckoView (Firefox-Browser-Technik) – freie Software von Mozilla
-        maven("https://maven.mozilla.org/maven2/") {
-            content { includeGroup("org.mozilla.geckoview") }
-        }
     }
 }
 

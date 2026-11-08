@@ -1,13 +1,19 @@
 # Self — Session-Memory (neueste oben)
 
-## 2026-11-08 — Session 2a: Kindle als Buch-Quelle [Rechner: Tablet]
+## 2026-11-08 — Session 2a: Kindle-Quelle + GeckoView raus (APK wieder klein) [Rechner: Tablet]
 - Reader-Quellen: neue Quelle KINDLE (BookSource) neben TOLINO. Wird wie Tolino als **App gestartet**
   (`com.amazon.kindle`), nicht im eingebauten Browser – gekaufte Kindle-Bücher haben DRM, das Self/Readium
   nicht selbst öffnen kann.
 - `openTolinoApp`/`openKindleApp` teilen sich jetzt `openReaderApp(context, pkg)` (StoreBrowser.kt): App starten,
   sonst Play Store, sonst Store-Website. Fehlt die App → Snackbar (`reader_kindle_app_missing`).
 - LibraryScreen: Auswahl KINDLE → `openKindleApp`. Erscheint automatisch im SourceChooser (`BookSource.entries`).
-- Offen: auf dem Gerät testen (Chris hat die Kindle-App geladen); Icon ist noch das generische Buch-Symbol.
+- **GeckoView (Firefox-Engine, ~80 MB native Libs) entfernt** – war nur für den Tolino-*Webreader* nötig, der jetzt
+  als App läuft. Eingebauter Shop-Browser wieder auf die **Android-System-WebView** (0 MB extra), das ist die
+  bewährte Version von vor dem Gecko-Umbau (Commit 1656b95^): Download per DownloadListener, blob/data-Übernahme
+  per JS-Bridge, `downloadToCache` mit Cookies, SecureUpgradeClient (http→https, Absturz abfangen). PC/Tablet-
+  Umschalter blieb erhalten (userAgent). Gecko.kt gelöscht, Dep + Mozilla-Maven-Repo raus. APK sollte wieder ~20 MB.
+- Offen: am Gerät testen – (1) Kindle-App öffnet sich, (2) Download-Shops (Gutenberg/Standard Ebooks/Beam/
+  Libreture/J-Novel/Humble) laden EPUBs noch korrekt in die Bibliothek. Kindle-Icon noch generisches Buch-Symbol.
 
 ## 2026-11-01 — Session 1g: Lesen ins Ambiente, Weiterlesen, Spiel Ruhe (bis 0.1.21) [Rechner: Office]
 - Ambiente-Panel rechts: LESEN (Hell/Dunkel/Sepia, Schrift, Filter); Aa-Knopf weg. Ambiente startet mit der App (letzte Mischung).
