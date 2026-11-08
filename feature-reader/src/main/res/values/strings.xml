@@ -5,6 +5,9 @@
     <string name="reader_source_tolino">Tolino</string>
     <string name="reader_source_tolino_hint">Gekaufte Bücher in der Tolino-App öffnen</string>
     <string name="reader_tolino_app_missing">Tolino-App nicht gefunden – bitte aus dem Store installieren.</string>
+    <string name="reader_source_kindle">Kindle</string>
+    <string name="reader_source_kindle_hint">Gekaufte Bücher in der Kindle-App öffnen</string>
+    <string name="reader_kindle_app_missing">Kindle-App nicht gefunden – bitte aus dem Store installieren.</string>
     <string name="reader_source_jnovel">J-Novel Club</string>
     <string name="reader_source_jnovel_hint">Manga und Light Novels ohne DRM (Englisch)</string>
     <string name="reader_source_humble">Humble Bundle</string>

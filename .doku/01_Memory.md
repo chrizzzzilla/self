@@ -1,5 +1,14 @@
 # Self — Session-Memory (neueste oben)
 
+## 2026-11-08 — Session 2a: Kindle als Buch-Quelle [Rechner: Tablet]
+- Reader-Quellen: neue Quelle KINDLE (BookSource) neben TOLINO. Wird wie Tolino als **App gestartet**
+  (`com.amazon.kindle`), nicht im eingebauten Browser – gekaufte Kindle-Bücher haben DRM, das Self/Readium
+  nicht selbst öffnen kann.
+- `openTolinoApp`/`openKindleApp` teilen sich jetzt `openReaderApp(context, pkg)` (StoreBrowser.kt): App starten,
+  sonst Play Store, sonst Store-Website. Fehlt die App → Snackbar (`reader_kindle_app_missing`).
+- LibraryScreen: Auswahl KINDLE → `openKindleApp`. Erscheint automatisch im SourceChooser (`BookSource.entries`).
+- Offen: auf dem Gerät testen (Chris hat die Kindle-App geladen); Icon ist noch das generische Buch-Symbol.
+
 ## 2026-11-01 — Session 1g: Lesen ins Ambiente, Weiterlesen, Spiel Ruhe (bis 0.1.21) [Rechner: Office]
 - Ambiente-Panel rechts: LESEN (Hell/Dunkel/Sepia, Schrift, Filter); Aa-Knopf weg. Ambiente startet mit der App (letzte Mischung).
 - Soul: „Weiterlesen“ oben mittig (zuletzt geöffnetes Buch).

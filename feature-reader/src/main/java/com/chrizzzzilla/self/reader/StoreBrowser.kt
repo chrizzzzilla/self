@@ -80,6 +80,8 @@ internal enum class BookSource(
 ) {
     /** Gekaufte Tolino-/Orell-Füssli-Bücher (auch mit Kopierschutz) direkt im Webreader lesen. */
     TOLINO(R.string.reader_source_tolino, R.string.reader_source_tolino_hint, R.drawable.reader_ic_book, "https://webreader.mytolino.com/"),
+    /** Gekaufte Kindle-Bücher in der Kindle-App lesen (wird wie Tolino als App gestartet, nicht im Browser). */
+    KINDLE(R.string.reader_source_kindle, R.string.reader_source_kindle_hint, R.drawable.reader_ic_book, "https://read.amazon.de/"),
     BEAM(R.string.reader_source_beam, R.string.reader_source_beam_hint, R.drawable.reader_ic_globe, "https://www.beam-shop.de/"),
     LIBRETURE(R.string.reader_source_libreture, R.string.reader_source_libreture_hint, R.drawable.reader_ic_globe, "https://libreture.com/"),
     GUTENBERG(R.string.reader_source_gutenberg, R.string.reader_source_gutenberg_hint, R.drawable.reader_ic_book, "https://www.gutenberg.org/browse/languages/de"),
@@ -335,22 +337,30 @@ private fun NoticeAction(label: String, onClick: () -> Unit) {
 
 /** Paketname der offiziellen Tolino-App (Lese-App mit Cloud-Sync und Adobe-DRM). */
 private const val TOLINO_PACKAGE = "com.mytolino.app"
+/** Paketname der offiziellen Kindle-App (Amazon, Cloud-Sync, eigenes DRM). */
+private const val KINDLE_PACKAGE = "com.amazon.kindle"
+
+/** Oeffnet die installierte Tolino-App (sonst Play Store). Siehe openReaderApp. */
+internal fun openTolinoApp(context: Context): Boolean = openReaderApp(context, TOLINO_PACKAGE)
+
+/** Oeffnet die installierte Kindle-App (sonst Play Store). Gekaufte Kindle-Buecher haben DRM, das Self selbst nicht oeffnen kann. */
+internal fun openKindleApp(context: Context): Boolean = openReaderApp(context, KINDLE_PACKAGE)
 
 /**
- * Oeffnet die installierte Tolino-App. Ist sie nicht da, fuehrt es zum Play Store. Gibt true zurueck,
- * wenn irgendetwas gestartet wurde. Der Tolino-Webreader (Website) scheitert zurzeit in jedem Browser
- * mit „BROWSER_STORAGE_FAIL“; die App ist der funktionierende Weg zu gekauften Tolino-Buechern.
+ * Oeffnet die installierte Lese-App mit dem Paketnamen. Ist sie nicht da, fuehrt es zum Play Store. Gibt true
+ * zurueck, wenn irgendetwas gestartet wurde. Gekaufte Buecher in Tolino/Kindle haben Kopierschutz, den Self/Readium
+ * nicht selbst oeffnen kann; die jeweilige App ist der funktionierende Weg dorthin.
  */
-internal fun openTolinoApp(context: Context): Boolean {
-    context.packageManager.getLaunchIntentForPackage(TOLINO_PACKAGE)?.let { intent ->
+private fun openReaderApp(context: Context, pkg: String): Boolean {
+    context.packageManager.getLaunchIntentForPackage(pkg)?.let { intent ->
         return runCatching {
             context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true
         }.getOrDefault(false)
     }
     // App nicht installiert → Play Store (oder Website als Rueckfall)
-    val store = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$TOLINO_PACKAGE")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    val store = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     if (runCatching { context.startActivity(store); true }.getOrDefault(false)) return true
-    val web = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$TOLINO_PACKAGE")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    val web = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$pkg")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     return runCatching { context.startActivity(web); true }.getOrDefault(false)
 }
 

@@ -216,6 +216,10 @@ fun LibraryScreen(
                         if (!openTolinoApp(context)) {
                             scope.launch { snackbar.showSnackbar(context.getString(R.string.reader_tolino_app_missing)) }
                         }
+                    } else if (it == BookSource.KINDLE) {
+                        if (!openKindleApp(context)) {
+                            scope.launch { snackbar.showSnackbar(context.getString(R.string.reader_kindle_app_missing)) }
+                        }
                     } else {
                         store = it
                     }
