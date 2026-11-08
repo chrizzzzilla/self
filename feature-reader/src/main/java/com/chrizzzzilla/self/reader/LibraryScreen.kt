@@ -209,7 +209,16 @@ fun LibraryScreen(
                 compact = widthClass == WidthClass.COMPACT,
                 onSource = {
                     chooser = false
-                    store = it
+                    // Tolino-Buecher haben Adobe-Kopierschutz (Self/Readium kann sie nicht selbst
+                    // oeffnen), und der Tolino-Webreader scheitert in jedem Browser mit
+                    // „BROWSER_STORAGE_FAIL“. Darum fuer Tolino die installierte Tolino-App starten.
+                    if (it == BookSource.TOLINO) {
+                        if (!openTolinoApp(context)) {
+                            scope.launch { snackbar.showSnackbar(context.getString(R.string.reader_tolino_app_missing)) }
+                        }
+                    } else {
+                        store = it
+                    }
                 },
                 onFiles = {
                     chooser = false
@@ -219,33 +228,30 @@ fun LibraryScreen(
             )
         }
 
-        // Eingebauter Browser: Download eines EPUBs → direkt in die Bibliothek und öffnen.
-        // Tolino laeuft ueber die Chromium-WebView (Gecko bricht dort mit „DB ACTION TIMED OUT“ ab),
-        // alle anderen Quellen bleiben bei GeckoView.
+        // Eingebauter Browser: Download eines EPUBs → direkt in die Bibliothek und öffnen
         store?.let { src ->
-            val onDl: (StoreDownload) -> Unit = { d ->
-                when {
-                    d.isAdobeDrm -> scope.launch { snackbar.showSnackbar(context.getString(R.string.reader_error_adobe_drm)) }
-                    !d.isBook && d.localFile == null && d.mimeType?.contains("octet-stream") != true ->
-                        scope.launch { snackbar.showSnackbar(context.getString(R.string.reader_error_not_epub_download)) }
-                    else -> {
-                        store = null
-                        runTask {
-                            val file = downloadToCache(context, d)
-                            try {
-                                Reader.importAndOpen(context, Uri.fromFile(file))
-                            } finally {
-                                file.delete()
+            StoreBrowser(
+                source = src,
+                onClose = { store = null },
+                onDownload = { d ->
+                    when {
+                        d.isAdobeDrm -> scope.launch { snackbar.showSnackbar(context.getString(R.string.reader_error_adobe_drm)) }
+                        !d.isBook && d.localFile == null && d.mimeType?.contains("octet-stream") != true ->
+                            scope.launch { snackbar.showSnackbar(context.getString(R.string.reader_error_not_epub_download)) }
+                        else -> {
+                            store = null
+                            runTask {
+                                val file = downloadToCache(context, d)
+                                try {
+                                    Reader.importAndOpen(context, Uri.fromFile(file))
+                                } finally {
+                                    file.delete()
+                                }
                             }
                         }
                     }
-                }
-            }
-            if (src == BookSource.TOLINO) {
-                StoreBrowserWeb(source = src, onClose = { store = null }, onDownload = onDl)
-            } else {
-                StoreBrowser(source = src, onClose = { store = null }, onDownload = onDl)
-            }
+                },
+            )
         }
     }
 

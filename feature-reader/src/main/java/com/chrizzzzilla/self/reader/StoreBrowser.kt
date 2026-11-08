@@ -333,6 +333,27 @@ private fun NoticeAction(label: String, onClick: () -> Unit) {
     )
 }
 
+/** Paketname der offiziellen Tolino-App (Lese-App mit Cloud-Sync und Adobe-DRM). */
+private const val TOLINO_PACKAGE = "com.mytolino.app"
+
+/**
+ * Oeffnet die installierte Tolino-App. Ist sie nicht da, fuehrt es zum Play Store. Gibt true zurueck,
+ * wenn irgendetwas gestartet wurde. Der Tolino-Webreader (Website) scheitert zurzeit in jedem Browser
+ * mit „BROWSER_STORAGE_FAIL“; die App ist der funktionierende Weg zu gekauften Tolino-Buechern.
+ */
+internal fun openTolinoApp(context: Context): Boolean {
+    context.packageManager.getLaunchIntentForPackage(TOLINO_PACKAGE)?.let { intent ->
+        return runCatching {
+            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true
+        }.getOrDefault(false)
+    }
+    // App nicht installiert → Play Store (oder Website als Rueckfall)
+    val store = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$TOLINO_PACKAGE")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    if (runCatching { context.startActivity(store); true }.getOrDefault(false)) return true
+    val web = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$TOLINO_PACKAGE")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    return runCatching { context.startActivity(web); true }.getOrDefault(false)
+}
+
 /** Im externen Browser oeffnen – bevorzugt Firefox (der Tolino-Webreader laeuft dort, in Chrome-Varianten oft nicht). */
 private fun openExternal(context: Context, url: String) {
     val uri = Uri.parse(url)

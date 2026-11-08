@@ -3,7 +3,8 @@
     <string name="reader_library_title">Bibliothek</string>
     <string name="reader_add_book">Buch hinzufügen</string>
     <string name="reader_source_tolino">Tolino</string>
-    <string name="reader_source_tolino_hint">Gekaufte Bücher (auch mit Kopierschutz) im Webreader lesen</string>
+    <string name="reader_source_tolino_hint">Gekaufte Bücher in der Tolino-App öffnen</string>
+    <string name="reader_tolino_app_missing">Tolino-App nicht gefunden – bitte aus dem Store installieren.</string>
     <string name="reader_source_jnovel">J-Novel Club</string>
     <string name="reader_source_jnovel_hint">Manga und Light Novels ohne DRM (Englisch)</string>
     <string name="reader_source_humble">Humble Bundle</string>

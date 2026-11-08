@@ -4,6 +4,15 @@
     <!-- Eingebauter Browser fuer DRM-freie Buch-Shops -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Android 11+: sichtbar machen, damit Self die Tolino-App finden/starten kann -->
+    <queries>
+        <package android:name="com.mytolino.app" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="market" />
+        </intent>
+    </queries>
+
     <application>
         <!--
             Eigene Activity fuer den Reader: Readium liefert den EPUB-Navigator als Fragment.
